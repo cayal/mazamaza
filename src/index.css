@@ -1,0 +1,44 @@
+@layer three-d-stage, modal-scenes, pointer-events;
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  max-width: 38rem;
+  overflow: hidden;
+  background-color: #aec48d;
+}
+
+@layer three-d-stage {
+  .three-d-stage canvas {
+    position:absolute;
+    transition: opacity 1.5s ease-in-out;
+    pointer-events: none;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1;
+  }
+}
+
+@layer pointer-events {
+  .pointer-glass {
+    position:absolute;
+    width: 100vw;
+    height: 100vh;
+  }
+}
+
+@layer modal-scenes {
+  .modal-scene-display {
+    position:absolute;
+    z-index: 100;
+    transition: transform 1.5s ease-in-out;
+    pointer-events: none;
+    width: 100vw;
+    height: 100vh;
+    display: grid;
+    align-items: center;
+    justify-content: center;
+  }
+}
