@@ -146,7 +146,7 @@ namespace CanvasSetup {
     }
 }
 
-namespace GPU {
+namespace GFX {
     export const VAttrSizes: {[s in GPUVertexFormat]: number} = {
         unorm8x2:  1 * 2,
         unorm8x4:  1 * 4,
@@ -354,6 +354,61 @@ namespace GPU {
         return gpuBuffer;
     }
 
+    export function recomputeProjectionIfCanvasChanged(
+        device: GPUDevice,
+        canvas: HTMLCanvasElement,
+        depthTexture: GPUTexture
+    ): {
+        projectionMatrixUniformBufferUpdate: GPUBuffer,
+        depthAttachment: GPURenderPassDepthStencilAttachment
+     } | null {
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        let currentCanvasWidth = canvas.clientWidth * devicePixelRatio;
+        let currentCanvasHeight = canvas.clientHeight * devicePixelRatio;
+        let projectionMatrixUniformBufferUpdate = null;
+        if (!(depthTexture === null || currentCanvasWidth != canvas.width || currentCanvasHeight != canvas.height)) {
+            return null
+        }
+        else {
+            canvas.width = currentCanvasWidth;
+            canvas.height = currentCanvasHeight;
+
+            const depthTextureDesc: GPUTextureDescriptor = {
+                size: [canvas.width, canvas.height, 1],
+                dimension: '2d',
+                format: 'depth24plus-stencil8',
+                usage: GPUTextureUsage.RENDER_ATTACHMENT
+            };
+
+            if (depthTexture !== null) {
+                depthTexture.destroy();
+            }
+
+            depthTexture = device.createTexture(depthTextureDesc);
+            let depthTextureView = depthTexture.createView();
+
+            let depthAttachment: GPURenderPassDepthStencilAttachment = {
+                view: depthTextureView,
+                depthClearValue: 1,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+                stencilClearValue: 0,
+                stencilLoadOp: 'clear',
+                stencilStoreOp: 'store'
+            };
+
+            let projectionMatrix = glMatrix.mat4.perspective(glMatrix.mat4.create(),
+                1.4, canvas.width / canvas.height, 0.1, 1000.0) as unknown as Float32Array;
+
+            projectionMatrixUniformBufferUpdate = GFX.createBuffer(device, projectionMatrix, GPUBufferUsage.COPY_SRC, 'projectionMatrixUniformBufferUpdate');
+
+            return {
+                depthAttachment,
+                projectionMatrixUniformBufferUpdate
+            }
+        }
+    }
+
     export function drawCircle(device: GPUDevice,
         encoder: GPURenderPassEncoder, 
         center: [number, number], 
@@ -372,7 +427,7 @@ namespace GPU {
             })
             
             const vertexArray = new Float32Array(positions.flat())
-            const vertexBuffer = GPU.createBuffer(device, vertexArray, GPUBufferUsage.VERTEX)
+            const vertexBuffer = GFX.createBuffer(device, vertexArray, GPUBufferUsage.VERTEX)
             
             const vertexBufferLayout: GPUVertexBufferLayout = {
                 arrayStride: 4 * 3,
@@ -549,11 +604,11 @@ namespace GameElements {
                 { buffer: normalMatrixUniformBuffer }
             ]
                 
-            let attributeList = GPU.MakeAttribInfoList<typeof mainShaderSrc>()
+            let attributeList = GFX.MakeAttribInfoList<typeof mainShaderSrc>()
             attributeList = attributeList.add(mainShaderSrc, 'position', 'float32x3', 0)
             attributeList = attributeList.add(mainShaderSrc, 'normal', 'float32x3', 1)
 
-            return GPU.MakeShadingStrat(uLets, uBindingResources, attributeList.entries, mainShaderSrc, this.device)
+            return GFX.MakeShadingStrat(uLets, uBindingResources, attributeList.entries, mainShaderSrc, this.device)
         }
         
         encodeMainDraw: EncodeDrawCallback = (
@@ -571,61 +626,6 @@ namespace GameElements {
             encoder.setVertexBuffer(1, normalBuffer)
             encoder.setIndexBuffer(indexBuffer, 'uint16')
             encoder.drawIndexed(indexSize)
-        }
-
-        recomputeProjectionIfCanvasChanged = (
-            device: GPUDevice,
-            canvas: HTMLCanvasElement,
-            depthTexture: GPUTexture
-        ): {
-            projectionMatrixUniformBufferUpdate: GPUBuffer,
-            depthAttachment: GPURenderPassDepthStencilAttachment
-         } | null => {
-            const devicePixelRatio = window.devicePixelRatio || 1;
-            let currentCanvasWidth = canvas.clientWidth * devicePixelRatio;
-            let currentCanvasHeight = canvas.clientHeight * devicePixelRatio;
-            let projectionMatrixUniformBufferUpdate = null;
-            if (!(depthTexture === null || currentCanvasWidth != canvas.width || currentCanvasHeight != canvas.height)) {
-                return null
-            }
-            else {
-                canvas.width = currentCanvasWidth;
-                canvas.height = currentCanvasHeight;
-
-                const depthTextureDesc: GPUTextureDescriptor = {
-                    size: [canvas.width, canvas.height, 1],
-                    dimension: '2d',
-                    format: 'depth24plus-stencil8',
-                    usage: GPUTextureUsage.RENDER_ATTACHMENT
-                };
-
-                if (depthTexture !== null) {
-                    depthTexture.destroy();
-                }
-
-                depthTexture = device.createTexture(depthTextureDesc);
-                let depthTextureView = depthTexture.createView();
-
-                let depthAttachment: GPURenderPassDepthStencilAttachment = {
-                    view: depthTextureView,
-                    depthClearValue: 1,
-                    depthLoadOp: 'clear',
-                    depthStoreOp: 'store',
-                    stencilClearValue: 0,
-                    stencilLoadOp: 'clear',
-                    stencilStoreOp: 'store'
-                };
-
-                let projectionMatrix = glMatrix.mat4.perspective(glMatrix.mat4.create(),
-                    1.4, canvas.width / canvas.height, 0.1, 1000.0) as unknown as Float32Array;
-
-                projectionMatrixUniformBufferUpdate = GPU.createBuffer(device, projectionMatrix, GPUBufferUsage.COPY_SRC, 'projectionMatrixUniformBufferUpdate');
-
-                return {
-                    depthAttachment,
-                    projectionMatrixUniformBufferUpdate
-                }
-            }
         }
 
         render = async (angle: number, 
@@ -659,7 +659,7 @@ namespace GameElements {
             device.queue.writeBuffer(modelViewMatrixUniformBuffer, 0, mvmUpdate, 0, modelViewMatrix.length)
 
             
-            const { depthAttachment, projectionMatrixUniformBufferUpdate } = this.recomputeProjectionIfCanvasChanged(
+            const { depthAttachment, projectionMatrixUniformBufferUpdate } = GFX.recomputeProjectionIfCanvasChanged(
                 device,
                 canvas,
                 depthTexture,
@@ -741,19 +741,19 @@ namespace GameElements {
                     glMatrix.vec3.fromValues(0, 0, 0), 
                     glMatrix.vec3.fromValues(0.0, 0.0, 1.0)) as unknown as Float32Array;
         
-                    let modelViewMatrixUniformBuffer = GPU.createBuffer(device, modelViewMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'modelViewMatrixBuf');
+                    let modelViewMatrixUniformBuffer = GFX.createBuffer(device, modelViewMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'modelViewMatrixBuf');
             
             
                     let modelViewMatrixInverse = glMatrix.mat4.invert(glMatrix.mat4.create(), modelViewMatrix);
             
                     let normalMatrix = glMatrix.mat4.transpose(glMatrix.mat4.create(), modelViewMatrixInverse) as unknown as Float32Array;
             
-                    let normalMatrixUniformBuffer = GPU.createBuffer(device, normalMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'normUniformBuffer');
+                    let normalMatrixUniformBuffer = GFX.createBuffer(device, normalMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'normUniformBuffer');
             
                     let projectionMatrix = glMatrix.mat4.perspective(glMatrix.mat4.create(),
                         1.4, 640.0 / 480.0, 0.1, 1000.0) as unknown as Float32Array;
             
-                    let projectionMatrixUniformBuffer = GPU.createBuffer(device, projectionMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'pmUniformBuffer');
+                    let projectionMatrixUniformBuffer = GFX.createBuffer(device, projectionMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'pmUniformBuffer');
         
                     let { 
                         shaderModule, 
