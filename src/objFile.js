@@ -58,62 +58,61 @@ export async function loadObj(device, url) {
 
   let minZ = Number.MAX_VALUE;
   let maxZ = Number.MIN_VALUE;
-  for (let v of obj.result.models[0].vertices) {
-      positions.push(v.x);
-      positions.push(v.y);
-      positions.push(v.z);
+
+  for (let i = 0; i < obj.result.models[0].faces.length * 3; i++) {
+      positions.push(0.0);
+      positions.push(0.0);
+      positions.push(0.0);
       normals.push(0.0);
       normals.push(0.0);
       normals.push(0.0);
-      texCoords.push(0.0)
       texCoords.push(0.0)
       texCoords.push(0.0)
   }
-
+  
   positions = new Float32Array(positions);
   normals = new Float32Array(normals);
   texCoords = new Float32Array(texCoords)
 
-  let positionBuffer = createGPUBuffer(device, positions, GPUBufferUsage.VERTEX);
-  let indices = [];
+  let indices = Array(obj.result.models[0].faces.length * 3).fill(0).map((_, i) => i);
   
 //cs_start: normal_loading
+  let indexNumber = 0
   for (let f of obj.result.models[0].faces) {
-      let points = [];
-      let facet_indices = [];
-      for (let v of f.vertices) {
-          const index = v.vertexIndex - 1;
-          indices.push(index);
+      for (let facetPoint of f.vertices) {
 
-          const vertex = glMatrix.vec3.fromValues(positions[index * 3], positions[index * 3 + 1], positions[index * 3 + 2]);
+          const { x, y, z } = obj.result.models[0].vertices[facetPoint.vertexIndex - 1]
 
-          minX = Math.min(positions[index * 3], minX);
-          maxX = Math.max(positions[index * 3], maxX);
+          minX = Math.min(x, minX);
+          maxX = Math.max(x, maxX);
 
-          minY = Math.min(positions[index * 3 + 1], minY);
-          maxY = Math.max(positions[index * 3 + 1], maxY);
+          minY = Math.min(y, minY);
+          maxY = Math.max(y, maxY);
 
-          minZ = Math.min(positions[index * 3 + 2], minZ);
-          maxZ = Math.max(positions[index * 3 + 2], maxZ);
-          points.push(vertex);
-          facet_indices.push(index);
+          minZ = Math.min(z, minZ);
+          maxZ = Math.max(z, maxZ);
 
-          texCoords[index * 3 + 0] = obj.result.models[0].textureCoords[v.textureCoordsIndex - 1].u
-          texCoords[index * 3 + 1] = obj.result.models[0].textureCoords[v.textureCoordsIndex - 1].v
-          texCoords[index * 3 + 2] = obj.result.models[0].textureCoords[v.textureCoordsIndex - 1].w
+          positions[indexNumber * 3 + 0] = x
+          positions[indexNumber * 3 + 1] = y
+          positions[indexNumber * 3 + 2] = z
+
+          let texico = obj.result.models[0].textureCoords[facetPoint.textureCoordsIndex - 1]
+
+          texCoords[indexNumber * 2 + 0] = (texico.u)
+        
+          // Flipped because blender counts the v coordinate from the bottom rather than the top
+          texCoords[indexNumber * 2 + 1] = (1 - texico.v)
+        
+          let { x: i, y: j, z: k } = obj.result.models[0].vertexNormals[facetPoint.vertexNormalIndex - 1]
+          normals[indexNumber * 3 + 0] = i
+          normals[indexNumber * 3 + 1] = j
+          normals[indexNumber * 3 + 2] = k
+
+          indexNumber++
       }
 
-      const v1 = glMatrix.vec3.subtract(glMatrix.vec3.create(), points[1], points[0]);
-      const v2 = glMatrix.vec3.subtract(glMatrix.vec3.create(), points[2], points[0]);
-      const cross = glMatrix.vec3.cross(glMatrix.vec3.create(), v1, v2);
-      const normal = glMatrix.vec3.normalize(glMatrix.vec3.create(), cross);
-
-      for (let i of facet_indices) {
-          normals[i * 3] += normal[0];
-          normals[i * 3 + 1] += normal[1];
-          normals[i * 3 + 2] += normal[2];
-      }
   }
+  
   let normalBuffer = createGPUBuffer(device, normals, GPUBufferUsage.VERTEX);
 //cs_end: normal_loading
 
@@ -121,6 +120,8 @@ export async function loadObj(device, url) {
 
   indices = new Uint16Array(indices);
 
+  console.log(positions)
+  let positionBuffer = createGPUBuffer(device, positions, GPUBufferUsage.VERTEX);
   let indexBuffer = createGPUBuffer(device, indices, GPUBufferUsage.INDEX);
   let texCoordBuffer = createGPUBuffer(device, texCoords, GPUBufferUsage.VERTEX)
   

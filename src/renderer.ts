@@ -208,7 +208,7 @@ namespace GFX {
             const attribDesc: GPUVertexAttribute = {
                 shaderLocation: location,
                 offset: _offset,
-                format: 'float32x3'
+                format: format
             }
 
             const nextEntries = [...this.entries, {
@@ -239,53 +239,69 @@ namespace GFX {
     export type ShadingStrategy = {
         shaderLabel: string,
         shaderModule: GPUShaderModule,
-        uniformBindGroupLayout: GPUBindGroupLayout,
         uniformBindGroup: GPUBindGroup,
         pipeline: GPURenderPipeline
     }
 
     export function MakeShadingStrat<Sh extends string>(
+        label: string,
         uniformLayoutEntries: GPUBindGroupLayoutEntry[],
         uniformBindingResources: GPUBindingResource[],
         attributes: AttribInfo<Sh>[],
         shaderSrc: string,
-        device: GPUDevice
+        device: GPUDevice,
+        useDepth: boolean=false
     ): ShadingStrategy {
-
         if (uniformBindingResources.length !== uniformLayoutEntries.length) {
             throw new RangeError(`MakeShadingStrat() | Can\'t make for ${shaderSrc}: 
                 There are ${uniformLayoutEntries.length} uniform layout entries 
                 but ${uniformBindingResources.length} uniform resources to bind.`)
         }
 
-        let uniformBindGroupLayout = device.createBindGroupLayout({
-            entries: uniformLayoutEntries
-        });
+        let uniformBindGroup: GPUBindGroup
+        let pipelineLayoutDesc: GPUPipelineLayoutDescriptor;
 
-        let bindGroupDescriptorEntries = uniformBindingResources.map((br, i) => ({
-                binding: i,
-                resource: br
-        }))
+        if (uniformLayoutEntries.length == 0) {
+            pipelineLayoutDesc = { 
+                label: `${label}.pipelineLayoutDesc_nullUniforms`,
+                bindGroupLayouts: []
+            }
+        } else {
+            const uniformBindGroupLayout = device.createBindGroupLayout({
+                entries: uniformLayoutEntries,
+                label: `${label}.uniformBindGroupLayout`
+            });
 
-        let uniformBindGroup = device.createBindGroup({
-            layout: uniformBindGroupLayout,
-            entries: bindGroupDescriptorEntries
-        })
+            const bindGroupDescriptorEntries = uniformBindingResources.map((br, i) => ({
+                    binding: i,
+                    resource: br
+            }))
 
-        const pipelineLayoutDesc = { bindGroupLayouts: [uniformBindGroupLayout] };
+            uniformBindGroup = device.createBindGroup({
+                entries: bindGroupDescriptorEntries,
+                layout: uniformBindGroupLayout,
+                label: `${label}.uniformBindGroup`
+            })
+
+            pipelineLayoutDesc = { 
+                bindGroupLayouts: [uniformBindGroupLayout],
+                label: `${label}.pipelineLayoutDesc`
+            };
+        }
+
         const pipelineLayout = device.createPipelineLayout(pipelineLayoutDesc);
 
         const colorState: GPUColorTargetState = {
             format: 'bgra8unorm'
         };
 
-        let label = shaderSrc.split('/').slice(-1).join('')
-        let shaderModule = device.createShaderModule({ 
-            code: mainShaderSrc,
-            label
+        const shaderModule = device.createShaderModule({ 
+            code: shaderSrc,
+            label: `${label}.shaderModule`
         })
 
         const pipelineDesc: GPURenderPipelineDescriptor = {
+            label: `${label}.pipeline`,
             layout: pipelineLayout,
             vertex: {
                 module: shaderModule,
@@ -300,19 +316,18 @@ namespace GFX {
             primitive: {
                 topology: 'triangle-list',
                 frontFace: 'ccw',
-                cullMode: 'none'
+                cullMode: 'back'
             },
-            depthStencil: {
+            depthStencil: useDepth ? {
                 depthWriteEnabled: true,
                 depthCompare: 'less',
                 format: 'depth24plus-stencil8'
-            }
+            } : undefined
         };
 
         return {
             shaderLabel: label,
             shaderModule,
-            uniformBindGroupLayout,
             uniformBindGroup,
             pipeline: device.createRenderPipeline(pipelineDesc)
         }
@@ -413,43 +428,44 @@ namespace GFX {
         encoder: GPURenderPassEncoder, 
         center: [number, number], 
         radius: number, 
-        color: [number, number, number, number]) {
+        color: [number, number, number]) {
 
             const vertexCount = 12
             
             const positions = Array(vertexCount * 3).fill(0).map((_, i) => {
                 const angle = 2 * Math.PI * i / vertexCount
+                const angleEnd = 2 * Math.PI * (i+1) / vertexCount
                 return [
                     center[0] + radius * Math.cos(angle), 
                     center[1] + radius * Math.sin(angle),
+                    0.0,
+                    center[0] + radius * Math.cos(angleEnd),
+                    center[1] + radius * Math.sin(angleEnd),
+                    0.0,
+                    center[0],
+                    center[1],
                     0.0
                 ]
-            })
+            }).flat()
             
-            const vertexArray = new Float32Array(positions.flat())
-            const vertexBuffer = GFX.createBuffer(device, vertexArray, GPUBufferUsage.VERTEX)
+            const colors = positions.map(posns => {
+                return [...color]
+            }).flat()
             
-            const vertexBufferLayout: GPUVertexBufferLayout = {
-                arrayStride: 4 * 3,
-                stepMode: 'vertex',
-                attributes: [
-                    {
-                        shaderLocation: 0,
-                        format: 'float32x3',
-                        offset: 0
-                }]
-            }
+            const vBuffer = GFX.createBuffer(device, Float32Array.from(positions), GPUBufferUsage.VERTEX, 'circleVertexBuffer')
+            const cBuffer = GFX.createBuffer(device, Float32Array.from(colors), GPUBufferUsage.VERTEX, 'circleColorBuffer')
 
-            // const circleDrawPipelineDesc = {
-            //     vertex: {
-            //         module: shaderModule,
-            //         entryPoint: 'vs_main',
-            //         buffers: [vertexBufferLayout]
-            //     }
-            // }
+            let attrList = GFX.MakeAttribInfoList<typeof sketchShaderSrc>()
+            attrList = attrList.add(sketchShaderSrc, 'position', 'float32x3', 0)
+            attrList = attrList.add(sketchShaderSrc, 'color', 'float32x3', 1)
 
-            // encoder.setVertexBuffer(0, vertexBuffer, 0, vertexBufferLayout)
-            encoder.draw(vertexCount)
+            const shadingStrat = GFX.MakeShadingStrat('circle', [], [], attrList.entries, sketchShaderSrc, device)
+            
+            encoder.setPipeline(shadingStrat.pipeline)
+            // encoder.setBindGroup(0, shadingStrat.uniformBindGroup)
+            encoder.setVertexBuffer(0, vBuffer)
+            encoder.setVertexBuffer(1, cBuffer)
+            encoder.draw(vertexCount * 3)
     }
 }
 
@@ -558,6 +574,7 @@ namespace GameElements {
         uniformBindGroup: GPUBindGroup,
         positionBuffer: GPUBuffer,
         normalBuffer: GPUBuffer,
+        texCoordBuffer: GPUBuffer,
         indexBuffer: GPUBuffer,
         indexSize: number
     ) => void
@@ -579,6 +596,8 @@ namespace GameElements {
             modelViewMatrixUniformBuffer: GPUBuffer, 
             projectionMatrixUniformBuffer: GPUBuffer, 
             normalMatrixUniformBuffer: GPUBuffer,
+            texture: GPUTexture,
+            sampler: GPUSampler
         ) => {
             const uLets = [
                     {
@@ -595,20 +614,33 @@ namespace GameElements {
                         binding: 2,
                         visibility: GPUShaderStage.VERTEX,
                         buffer: {}
+                    },
+                    {
+                        binding: 3,
+                        visibility: GPUShaderStage.FRAGMENT,
+                        texture: {}
+                    },
+                    {
+                        binding: 4,
+                        visibility: GPUShaderStage.FRAGMENT,
+                        sampler: {}
                     }
                 ]
                 
             const uBindingResources: GPUBindingResource[] = [
                 { buffer: modelViewMatrixUniformBuffer },
                 { buffer: projectionMatrixUniformBuffer },
-                { buffer: normalMatrixUniformBuffer }
+                { buffer: normalMatrixUniformBuffer },
+                texture.createView(),
+                sampler
             ]
                 
             let attributeList = GFX.MakeAttribInfoList<typeof mainShaderSrc>()
             attributeList = attributeList.add(mainShaderSrc, 'position', 'float32x3', 0)
             attributeList = attributeList.add(mainShaderSrc, 'normal', 'float32x3', 1)
+            attributeList = attributeList.add(mainShaderSrc, 'texCoords', 'float32x2', 2)
 
-            return GFX.MakeShadingStrat(uLets, uBindingResources, attributeList.entries, mainShaderSrc, this.device)
+            return GFX.MakeShadingStrat('goose', uLets, uBindingResources, attributeList.entries, mainShaderSrc, this.device, true)
         }
         
         encodeMainDraw: EncodeDrawCallback = (
@@ -617,6 +649,7 @@ namespace GameElements {
                 uniformBindGroup: GPUBindGroup,
                 positionBuffer: GPUBuffer,
                 normalBuffer: GPUBuffer,
+                texCoordBuffer: GPUBuffer,
                 indexBuffer: GPUBuffer,
                 indexSize: number
             ) => {
@@ -624,6 +657,7 @@ namespace GameElements {
             encoder.setBindGroup(0, uniformBindGroup)
             encoder.setVertexBuffer(0, positionBuffer)
             encoder.setVertexBuffer(1, normalBuffer)
+            encoder.setVertexBuffer(2, texCoordBuffer)
             encoder.setIndexBuffer(indexBuffer, 'uint16')
             encoder.drawIndexed(indexSize)
         }
@@ -634,6 +668,7 @@ namespace GameElements {
                         uniformBindGroup: GPUBindGroup,
                         positionBuffer: GPUBuffer,
                         normalBuffer: GPUBuffer,
+                        texCoordBuffer: GPUBuffer,
                         indexBuffer: GPUBuffer,
                         indexSize: number,
                         device: GPUDevice,
@@ -646,7 +681,7 @@ namespace GameElements {
                         depthAttachmentOld: GPURenderPassDepthStencilAttachment,
                         context: GPUCanvasContext,
                         commandEncoder: GPUCommandEncoder,
-                        passEncoder: GPURenderPassEncoder
+                        goosePassEncoder: GPURenderPassEncoder
                     ) => {
             
             let depthAttachmentNew = depthAttachmentOld
@@ -690,13 +725,49 @@ namespace GameElements {
                     projectionMatrixUniformBuffer, 0, projectionMatrix.byteLength);
             }
 
-            passEncoder = commandEncoder.beginRenderPass(renderPassDesc);
-            passEncoder.setViewport(0, 0, canvas.width, canvas.height, 0, 1);
-            encodeMainDraw(passEncoder, pipeline, uniformBindGroup, positionBuffer, normalBuffer, indexBuffer, indexSize);
-            passEncoder.end();
+            goosePassEncoder = commandEncoder.beginRenderPass(renderPassDesc);
+
+            goosePassEncoder.setViewport(0, 0, canvas.width, canvas.height, 0, 1);
+
+            encodeMainDraw(goosePassEncoder, pipeline, uniformBindGroup, positionBuffer, normalBuffer, texCoordBuffer, indexBuffer, indexSize);
+
+            goosePassEncoder.end();
+
             device.queue.submit([commandEncoder.finish()]);
 
             await device.queue.onSubmittedWorkDone();
+            
+            /** Circle drawing */
+
+            // let circleColorTexture = context.getCurrentTexture();
+            // let circleColorTextureView = circleColorTexture.createView();
+
+            // let circleColorAttachment: GPURenderPassColorAttachment = {
+            //     view: circleColorTextureView,
+            //     loadOp: 'load',
+            //     storeOp: 'store'
+            // };
+
+            // const circleRenderPassDesc: GPURenderPassDescriptor = {
+            //     colorAttachments: [circleColorAttachment],
+            //     label: 'circleRenderPassDescriptor'
+            // };
+
+            // let circleCommandEncoder = device.createCommandEncoder({ label: 'circleCommandEncoder' });
+
+            // let circlePassEncoder = circleCommandEncoder.beginRenderPass(circleRenderPassDesc);
+
+            // circlePassEncoder.setViewport(0, 0, canvas.width, canvas.height, 0, 1);
+
+            // GFX.drawCircle(device, circlePassEncoder, [0, 0], 1, [1, 0, 0,])
+
+            // circlePassEncoder.end();
+
+            // device.queue.submit([circleCommandEncoder.finish()]);
+
+            // await device.queue.onSubmittedWorkDone();
+
+            /** End circle */
 
             if (projectionMatrixUniformBufferUpdate !== null) {
                 projectionMatrixUniformBufferUpdate.destroy();
@@ -742,27 +813,43 @@ namespace GameElements {
                     glMatrix.vec3.fromValues(0.0, 0.0, 1.0)) as unknown as Float32Array;
         
                     let modelViewMatrixUniformBuffer = GFX.createBuffer(device, modelViewMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'modelViewMatrixBuf');
-            
-            
                     let modelViewMatrixInverse = glMatrix.mat4.invert(glMatrix.mat4.create(), modelViewMatrix);
-            
+
                     let normalMatrix = glMatrix.mat4.transpose(glMatrix.mat4.create(), modelViewMatrixInverse) as unknown as Float32Array;
-            
                     let normalMatrixUniformBuffer = GFX.createBuffer(device, normalMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'normUniformBuffer');
-            
+
                     let projectionMatrix = glMatrix.mat4.perspective(glMatrix.mat4.create(),
                         1.4, 640.0 / 480.0, 0.1, 1000.0) as unknown as Float32Array;
-            
                     let projectionMatrixUniformBuffer = GFX.createBuffer(device, projectionMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'pmUniformBuffer');
+                    
+                    const textureDescriptor: GPUTextureDescriptor = {
+                        size: { width: imgBitmap.width, height: imgBitmap.height },
+                        format: 'rgba8unorm',
+                        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+                    };
+                    const texture = device.createTexture(textureDescriptor);
+            
+                    device.queue.copyExternalImageToTexture({ source: imgBitmap }, { texture }, textureDescriptor.size);
+
+                    const sampler = device.createSampler({
+                        addressModeU: 'repeat',
+                        addressModeV: 'repeat',
+                        magFilter: 'linear',
+                        minFilter: 'linear',
+                        mipmapFilter: 'linear',
+                    });
         
                     let { 
                         shaderModule, 
-                        uniformBindGroupLayout, 
                         uniformBindGroup, 
                         pipeline 
-                    } = await this.initMainPipeline(modelViewMatrixUniformBuffer, 
+                    } = await this.initMainPipeline(
+                        modelViewMatrixUniformBuffer, 
                         projectionMatrixUniformBuffer, 
-                        normalMatrixUniformBuffer);
+                        normalMatrixUniformBuffer,
+                        texture,
+                        sampler
+                    );
 
                     let depthTexture: GPUTexture | null = null
                     let depthAttachment: GPURenderPassDepthStencilAttachment | null = null
@@ -778,6 +865,7 @@ namespace GameElements {
                             uniformBindGroup, 
                             positionBuffer, 
                             normalBuffer, 
+                            texCoordBuffer,
                             indexBuffer, 
                             indexSize, 
                             this.device, 
