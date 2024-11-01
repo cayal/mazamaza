@@ -573,6 +573,61 @@ namespace GameElements {
             encoder.drawIndexed(indexSize)
         }
 
+        recomputeProjectionIfCanvasChanged = (
+            device: GPUDevice,
+            canvas: HTMLCanvasElement,
+            depthTexture: GPUTexture
+        ): {
+            projectionMatrixUniformBufferUpdate: GPUBuffer,
+            depthAttachment: GPURenderPassDepthStencilAttachment
+         } | null => {
+            const devicePixelRatio = window.devicePixelRatio || 1;
+            let currentCanvasWidth = canvas.clientWidth * devicePixelRatio;
+            let currentCanvasHeight = canvas.clientHeight * devicePixelRatio;
+            let projectionMatrixUniformBufferUpdate = null;
+            if (!(depthTexture === null || currentCanvasWidth != canvas.width || currentCanvasHeight != canvas.height)) {
+                return null
+            }
+            else {
+                canvas.width = currentCanvasWidth;
+                canvas.height = currentCanvasHeight;
+
+                const depthTextureDesc: GPUTextureDescriptor = {
+                    size: [canvas.width, canvas.height, 1],
+                    dimension: '2d',
+                    format: 'depth24plus-stencil8',
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT
+                };
+
+                if (depthTexture !== null) {
+                    depthTexture.destroy();
+                }
+
+                depthTexture = device.createTexture(depthTextureDesc);
+                let depthTextureView = depthTexture.createView();
+
+                let depthAttachment: GPURenderPassDepthStencilAttachment = {
+                    view: depthTextureView,
+                    depthClearValue: 1,
+                    depthLoadOp: 'clear',
+                    depthStoreOp: 'store',
+                    stencilClearValue: 0,
+                    stencilLoadOp: 'clear',
+                    stencilStoreOp: 'store'
+                };
+
+                let projectionMatrix = glMatrix.mat4.perspective(glMatrix.mat4.create(),
+                    1.4, canvas.width / canvas.height, 0.1, 1000.0) as unknown as Float32Array;
+
+                projectionMatrixUniformBufferUpdate = GPU.createBuffer(device, projectionMatrix, GPUBufferUsage.COPY_SRC, 'projectionMatrixUniformBufferUpdate');
+
+                return {
+                    depthAttachment,
+                    projectionMatrixUniformBufferUpdate
+                }
+            }
+        }
+
         render = async (angle: number, 
                         encodeMainDraw: EncodeDrawCallback,
                         pipeline: GPURenderPipeline,
@@ -588,12 +643,14 @@ namespace GameElements {
                         projectionMatrix: Float32Array,
                         canvas: HTMLCanvasElement,
                         depthTexture: GPUTexture,
-                        depthAttachment: GPURenderPassDepthStencilAttachment,
+                        depthAttachmentOld: GPURenderPassDepthStencilAttachment,
                         context: GPUCanvasContext,
                         commandEncoder: GPUCommandEncoder,
                         passEncoder: GPURenderPassEncoder
                     ) => {
-            let _depthTexture = depthTexture
+            
+            let depthAttachmentNew = depthAttachmentOld
+                        
             let mvmUpdate = glMatrix.mat4.lookAt(glMatrix.mat4.create(),
                 glMatrix.vec3.fromValues(20 * Math.sin(angle),30,80 * Math.cos(angle)), 
                 glMatrix.vec3.fromValues(0, 20, 0), 
@@ -601,44 +658,17 @@ namespace GameElements {
 
             device.queue.writeBuffer(modelViewMatrixUniformBuffer, 0, mvmUpdate, 0, modelViewMatrix.length)
 
-            const devicePixelRatio = window.devicePixelRatio || 1;
-            let currentCanvasWidth = canvas.clientWidth * devicePixelRatio;
-            let currentCanvasHeight = canvas.clientHeight * devicePixelRatio;
-            let projectionMatrixUniformBufferUpdate = null;
-            if (_depthTexture === null || currentCanvasWidth != canvas.width || currentCanvasHeight != canvas.height) {
-                canvas.width = currentCanvasWidth;
-                canvas.height = currentCanvasHeight;
-
-                const depthTextureDesc: GPUTextureDescriptor = {
-                    size: [canvas.width, canvas.height, 1],
-                    dimension: '2d',
-                    format: 'depth24plus-stencil8',
-                    usage: GPUTextureUsage.RENDER_ATTACHMENT
-                };
-
-                if (_depthTexture !== null) {
-                    _depthTexture.destroy();
-                }
-
-                _depthTexture = device.createTexture(depthTextureDesc);
-                let depthTextureView = _depthTexture.createView();
-
-                depthAttachment = {
-                    view: depthTextureView,
-                    depthClearValue: 1,
-                    depthLoadOp: 'clear',
-                    depthStoreOp: 'store',
-                    stencilClearValue: 0,
-                    stencilLoadOp: 'clear',
-                    stencilStoreOp: 'store'
-                };
-
-                let projectionMatrix = glMatrix.mat4.perspective(glMatrix.mat4.create(),
-                    1.4, canvas.width / canvas.height, 0.1, 1000.0) as unknown as Float32Array;
-
-                projectionMatrixUniformBufferUpdate = GPU.createBuffer(device, projectionMatrix, GPUBufferUsage.COPY_SRC, 'projectionMatrixUniformBufferUpdate');
-
+            
+            const { depthAttachment, projectionMatrixUniformBufferUpdate } = this.recomputeProjectionIfCanvasChanged(
+                device,
+                canvas,
+                depthTexture,
+            );
+            
+            if (depthAttachment) {
+                depthAttachmentNew = depthAttachment
             }
+
             let colorTexture = context.getCurrentTexture();
             let colorTextureView = colorTexture.createView();
 
@@ -651,7 +681,7 @@ namespace GameElements {
 
             const renderPassDesc: GPURenderPassDescriptor = {
                 colorAttachments: [colorAttachment],
-                depthStencilAttachment: depthAttachment
+                depthStencilAttachment: depthAttachmentNew
             };
 
             commandEncoder = device.createCommandEncoder();
