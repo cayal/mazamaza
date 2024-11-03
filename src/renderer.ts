@@ -22,10 +22,9 @@ import catImg from './static/celeste.png'
 import glMatrix from './glMatrix';
 import { loadObj } from './objFile';
 import { GameScript } from './script';
-import { gameState, GameStateUnit } from './gameState/gameState';
+import { GameState, gameState, RealtimeSystem, ResidualStateUnit } from './gameState/gameState';
 import { GFX } from './gfx/gfx';
 import { CanvasSetup } from './setup/canvasSetup';
-import { components } from './ecs/components';
 import { Mesh } from './mesh/mesh';
 
 
@@ -62,7 +61,7 @@ namespace ViewMatrix {
         const viewMatrixData: ViewMatrix.ViewAngles = {
             mvAngleX: angle,
             mvAngleY: angle,
-            mvAngleZ: 1
+            mvAngleZ: 0
         }
             
         let projectionMatrix = glMatrix.mat4.perspective(
@@ -72,9 +71,9 @@ namespace ViewMatrix {
 
 
         let modelViewMatrix = glMatrix.mat4.lookAt(glMatrix.mat4.create(),
-        glMatrix.vec3.fromValues(70 * Math.sin(viewMatrixData.mvAngleX), 30 * Math.cos(viewMatrixData.mvAngleY), 30 * (viewMatrixData.mvAngleZ)), 
+        glMatrix.vec3.fromValues(100 * Math.PI / 2, 70 * Math.sin(viewMatrixData.mvAngleX), 0), 
         glMatrix.vec3.fromValues(0, 0, 0), 
-        glMatrix.vec3.fromValues(0.0, 0.0, 1.0)) as unknown as Float32Array;
+        glMatrix.vec3.fromValues(-1.0, 0.0, 0.0)) as unknown as Float32Array;
 
         let modelViewMatrixUniformBuffer = GFX.createBuffer(device, modelViewMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'modelViewMatrixBuf');
         let modelViewMatrixInverse = glMatrix.mat4.invert(glMatrix.mat4.create(), modelViewMatrix);
@@ -108,8 +107,9 @@ namespace GameElements {
 
         connectedCallback() {
             console.log('PointerGlass connected')
+            gameState.registerSignal('user.clickedMouse', {})
             this.hostEl.addEventListener('click', (e) => {
-                gameScript.next()
+                gameState.dispatch('user.clickedMouse', {})
             })
         }
     }
@@ -139,7 +139,7 @@ namespace GameElements {
             appendText()
         }
 
-        _stateUnit: GameStateUnit<'modalDialogue', string> = {
+        _stateUnit: ResidualStateUnit<'modalDialogue', string> = {
             key: 'modalDialogue',
             put: (gameState, value) => {
                 let statePrime = {
@@ -164,9 +164,25 @@ namespace GameElements {
             console.log('ModalScene connected')
             gameState.use(this._stateUnit)
             gameState.useReflex({
+                observedSignal: 'user.clickedMouse',
+                callback: (_) => {
+                    if (gameState.get('shownScreen') === 'modalDialogue') {
+                        gameScript.next()
+                    }
+                }
+            })
+            gameState.useReflex({
                 observedSignal: 'flappy.gameStart',
                 callback: (payload) => {
                     this.hostEl.style.transform = 'translateY(20vw)'
+                }
+            })
+            gameState.useReflex({
+                observedSignal: 'visibilityChange',
+                callback: (payload) => {
+                    if (payload == 'modal-dialogue') {
+                        this.hostEl.style.visibility = 'visible'
+                    }
                 }
             })
         }
@@ -189,7 +205,7 @@ namespace GameElements {
                 boardWidth: undefined as number, 
                 boardHeight: undefined as number 
             })
-
+            gameState.registerSignal('flappy.gameOver', {})
         }
     }
     
@@ -238,17 +254,17 @@ namespace GameElements {
             encoder.drawIndexed(indexSize)
         }
 
-        render = async (viewMatrices: ViewMatrix.ViewMatrices,
-                        device: GPUDevice
-                    ) => {
+        drawFrame = async (gameState: GameState) => {
+            let commandEncoder: GPUCommandEncoder = this.device.createCommandEncoder()
             
             let depthTexture: GPUTexture | null = null
             let depthAttachment: GPURenderPassDepthStencilAttachment | null = null
 
 
-            const meshComponents = components.query(this.entities, 'MeshComponent')
+            const meshComponents = gameState.components.query(gameState.entities, 'MeshBundle')
+            const viewMatrices = await ViewMatrix.getViewMatrices(this.device, 15.0)
             
-            let commandEncoder: GPUCommandEncoder = device.createCommandEncoder()
+
             await this.renderMeshes(this.device, 
                 commandEncoder,
                 meshComponents, 
@@ -260,42 +276,8 @@ namespace GameElements {
                 this.encodeMainDraw
             );
 
-            device.queue.submit([commandEncoder.finish()]);
-
-            await device.queue.onSubmittedWorkDone();
-            
-            /** Circle drawing */
-
-            // let circleColorTexture = context.getCurrentTexture();
-            // let circleColorTextureView = circleColorTexture.createView();
-
-            // let circleColorAttachment: GPURenderPassColorAttachment = {
-            //     view: circleColorTextureView,
-            //     loadOp: 'load',
-            //     storeOp: 'store'
-            // };
-
-            // const circleRenderPassDesc: GPURenderPassDescriptor = {
-            //     colorAttachments: [circleColorAttachment],
-            //     label: 'circleRenderPassDescriptor'
-            // };
-
-            // let circleCommandEncoder = device.createCommandEncoder({ label: 'circleCommandEncoder' });
-
-            // let circlePassEncoder = circleCommandEncoder.beginRenderPass(circleRenderPassDesc);
-
-            // circlePassEncoder.setViewport(0, 0, canvas.width, canvas.height, 0, 1);
-
-            // GFX.drawCircle(device, circlePassEncoder, [0, 0], 1, [1, 0, 0,])
-
-            // circlePassEncoder.end();
-
-            // device.queue.submit([circleCommandEncoder.finish()]);
-
-            // await device.queue.onSubmittedWorkDone();
-
-            /** End circle */
-
+            this.device.queue.submit([commandEncoder.finish()]);
+            await this.device.queue.onSubmittedWorkDone();
         }
 
         constructor() {
@@ -306,21 +288,11 @@ namespace GameElements {
             this.hostEl = _hel as HTMLElement
         }
 
-        #nextEntity = 0
-        entities = new Uint8Array(8192)
-        #entityComponentData: any[][] = Array(7).fill(Array(8192).fill(null))
-
-        addEntity() {
-            const eid = this.#nextEntity
-            this.entities[eid] = 1
-            this.#nextEntity++
-            return eid
-        }
         
         async renderMeshes(
             device: GPUDevice, 
             commandEncoder: GPUCommandEncoder,
-            meshComponents: Array<{ eid: number, data: any }>,
+            meshComponents: Array<{ eid: number, datas: { [key: string]: any } }>,
             viewMatrices: ViewMatrix.ViewMatrices,
             canvas: HTMLCanvasElement,
             context: GPUCanvasContext,
@@ -363,8 +335,8 @@ namespace GameElements {
                 { buffer: viewMatrices.modelViewMatrixUniformBuffer },
                 { buffer: viewMatrices.projectionMatrixUniformBuffer },
                 { buffer: viewMatrices.normalMatrixUniformBuffer },
-                meshComponents[0].data.texture.createView(),
-                meshComponents[0].data.sampler
+                meshComponents[0].datas.MeshBundle.texture.createView(),
+                meshComponents[0].datas.MeshBundle.sampler
             ]
             
             let attributeList = GFX.MakeAttribInfoList<typeof mainShaderSrc>()
@@ -376,6 +348,24 @@ namespace GameElements {
 
             let pmubu
             meshComponents.forEach(async (mc, i) => {
+                const position = gameState.components.query(gameState.entities, 'Position3d')
+                    .find(p => p.eid === mc.eid)?.datas.Position3d
+
+                if (!position) { return }
+                
+                const positionMatrix = glMatrix.mat4.create();
+                glMatrix.mat4.translate(positionMatrix, positionMatrix, 
+                    [position.positionX, position.positionY, position.positionZ]);
+                glMatrix.mat4.rotateX(positionMatrix, positionMatrix, position.angleX);
+                glMatrix.mat4.rotateY(positionMatrix, positionMatrix, position.angleY);
+                glMatrix.mat4.rotateZ(positionMatrix, positionMatrix, position.angleZ);
+                
+                const modelPositionMatrix = glMatrix.mat4.create()
+                //
+                // Combine with view matrix
+                glMatrix.mat4.multiply(modelPositionMatrix, viewMatrices.modelViewMatrix, positionMatrix);
+    
+
                 const { 
                     positionBuffer,
                     normalBuffer,
@@ -384,10 +374,10 @@ namespace GameElements {
                     indexSize,
                     texture, 
                     sampler 
-                } = mc.data
+                } = mc.datas.MeshBundle
 
                 
-                device.queue.writeBuffer(viewMatrices.modelViewMatrixUniformBuffer, 0, viewMatrices.modelViewMatrix, 0, viewMatrices.modelViewMatrix.length)
+                device.queue.writeBuffer(viewMatrices.modelViewMatrixUniformBuffer, 0, modelPositionMatrix as unknown as Float32Array, 0, (modelPositionMatrix as unknown as Float32Array).length)
                 
                 const { depthAttachment, projectionMatrixUniformBufferUpdate } = GFX.recomputeProjectionIfCanvasChanged(
                     device,
@@ -438,8 +428,14 @@ namespace GameElements {
                 return;
             }
             
-            let startingAngle = 15
-            let angle = startingAngle
+            let startingAngle = Math.PI / 2
+            gameState.use({
+                key: 'globalViewAngle',
+                put: (gameState, value) => ({ ...gameState, angle: value }),
+                pik: (gameState) => gameState.angle
+            })
+
+            gameState.set('globalViewAngle', startingAngle)
 
             this.canvas = canvas
 
@@ -447,10 +443,55 @@ namespace GameElements {
             this.device = device
             this.context = context
             
-            let gooseEid = this.addEntity()
+            let gooseEid = gameState.addEntity()
 
-            components.attach(this.entities, gooseEid, 'MeshComponent', await Mesh.loadFromObjFile(this.device, gooseUrl, gooseTexUrl))
+            gameState.components.attach(gameState.entities, gooseEid, 'MeshBundle', await Mesh.loadFromObjFile(this.device, gooseUrl, gooseTexUrl))
+            gameState.components.attach(gameState.entities, gooseEid, 'Position3d', {
+                angleX: 0,
+                angleY: 0,
+                angleZ: 0,
+                positionX: 0,
+                positionY: 0,
+                positionZ: 0
+            })
             // await this.attachComponent(gooseTwoEid, 'mesh', await Mesh.loadFromObjFile(this.device, jewelUrl, gooseTexUrl))
+            
+            gameState.useReflex({
+                observedSignal: 'user.clickedMouse',
+                callback: () => {
+                    const controlledComponents = gameState.components.query(gameState.entities, 'PlayerControl')
+                    controlledComponents.forEach(cc => {
+                        const velocityComponent = gameState.components.query(gameState.entities, 'Velocity')
+                            .filter(x => x.eid == cc.eid)
+                        velocityComponent.forEach(vc => {
+                            vc.datas.Velocity.velocityY = cc.datas.PlayerControl.jumpForce * 29
+                        })
+                    })
+                }
+            })
+            
+            gameState.useReflex({
+                observedSignal: 'flappy.gameOver',
+                callback: () => {
+                    console.log("Game over event")
+                    document.querySelector('h1').innerHTML = 'game over'
+                    gameState.stopRealtime()
+
+                    console.log(gameState.get('history'))
+                    gameState.set('history', [...gameState.get('history'), 'flappyGameFailed'])
+
+                    gameScript.next()
+                }
+            })
+            
+            gameState.useReflex({
+                observedSignal: 'visibilityChange',
+                callback: async (payload) => {
+                    if (payload == 'flappy-game') {
+                        document.querySelector('flappy-game').style.visibility = 'visible'
+                    }
+                }
+            })
 
             gameState.useReflex({
                 observedSignal: 'flappy.gameStart',
@@ -459,24 +500,27 @@ namespace GameElements {
                     canvas.style.opacity = '1'
 
                     console.log('flappy.gameStart observed by canvas')
-
-                    let timeId: NodeJS.Timeout | null = null;
-
-                    const reRender = async () => {
-                        angle += 0.001
-                        const viewMatrices = await ViewMatrix.getViewMatrices(this.device, angle)
-
-                        this.render(viewMatrices, 
-                            this.device)
-                        if (timeId) {
-                            clearTimeout(timeId);
+                    gameState.components.attach(gameState.entities, gooseEid, 'Gravity', { accel: -9.8 })
+                    gameState.components.attach(gameState.entities, gooseEid, 'Velocity', { velocityX: 0, velocityY: 0, velocityZ: 0 })
+                    gameState.components.attach(gameState.entities, gooseEid, 'Acceleration', { accelX: 0, accelY: 0, accelZ: 0 })
+                    gameState.components.attach(gameState.entities, gooseEid, 'PlayerControl', { jumpForce: 3.0 })
+                    gameState.systems.register({
+                        componentNames: ['Gravity', 'Position3d', 'Velocity', 'Acceleration'],
+                        update: (gameState, dt, components) => {
+                            components.forEach(c => {
+                                if (c.datas.Position3d.positionY > -90.0) {
+                                    c.datas.Position3d.positionY += c.datas.Velocity.velocityY * (dt / 1000)
+                                    c.datas.Velocity.velocityY += (c.datas.Gravity.accel*20 + c.datas.Acceleration.accelY) * (dt / 1000)
+                                } else {
+                                    c.datas.Acceleration.accelY = 0
+                                    c.datas.Velocity.velocityY = 0
+                                    gameState.dispatch('flappy.gameOver', {})
+                                }
+                            })
                         }
-                        timeId = setTimeout(() => {
-                            requestAnimationFrame(reRender);
-                        }, 17);
-                    }
+                    })
 
-                    requestAnimationFrame(reRender);
+                    gameState.initRealtime(this.drawFrame)
                 }
             })
             gameScript.next()

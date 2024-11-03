@@ -8,10 +8,12 @@
   <body>
     <script type="module" src="/src/renderer.ts"></script>
     <pointer-glass class="pointer-glass"></pointer-glass>
-    <modal-dialogue class="modal-scene-display">
+    <modal-dialogue class="modal-scene-display" style="visibility: hidden">
       <p class="dialogue"></p>
     </modal-dialogue>
-    <flappy-game class="modal-scene-display"></flappy-game>
+    <flappy-game class="modal-scene-display" style="visibility: hidden">
+      <h1>ui visible</h1>
+    </flappy-game>
     <three-d-stage class="three-d-stage">
       <canvas id="canvas" width="640" height="480" style="opacity: 0;"></canvas>
     </three-d-stage>
