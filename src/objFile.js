@@ -120,7 +120,6 @@ export async function loadObj(device, url) {
 
   indices = new Uint16Array(indices);
 
-  console.log(positions)
   let positionBuffer = createGPUBuffer(device, positions, GPUBufferUsage.VERTEX);
   let indexBuffer = createGPUBuffer(device, indices, GPUBufferUsage.INDEX);
   let texCoordBuffer = createGPUBuffer(device, texCoords, GPUBufferUsage.VERTEX)

@@ -1,10 +1,10 @@
-import { gameState } from "./renderer";
+import { gameState } from "./gameState/gameState";
 
 export function say(text: string) {
     gameState.set('modalDialogue', text);
 }
 
-export function match3(boardWidth: number, boardHeight: number) {
-    console.log('Match 3 callback in scriptInterpreter')
-    gameState.dispatch('match3.gameStart', { boardWidth, boardHeight })
+export function flappy(boardWidth: number, boardHeight: number) {
+    console.log('Flappt gane callback in scriptInterpreter')
+    gameState.dispatch('flappy.gameStart', { boardWidth, boardHeight })
 }
