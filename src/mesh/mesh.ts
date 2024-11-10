@@ -1,17 +1,17 @@
 import { GFX } from "../gfx/gfx"
 import { loadObj } from "../objFile"
-export namespace Mesh {
-    export type MeshData = {
-        positionBuffer: GPUBuffer,
-        normalBuffer: GPUBuffer,
-        texCoordBuffer: GPUBuffer,
-        indexBuffer: GPUBuffer,
-        indexSize: number,
-        texture: GPUTexture,
-        sampler: GPUSampler
-    }
 
-    export async function loadFromObjFile(device: GPUDevice, objUrl: string, texUrl: string): Promise<MeshData> {
+export type MeshData = {
+    positionBuffer: GPUBuffer,
+    normalBuffer: GPUBuffer,
+    texCoordBuffer: GPUBuffer,
+    indexBuffer: GPUBuffer,
+    indexSize: number,
+    texture: GPUTexture,
+    sampler: GPUSampler
+}
+export const Mesh = {
+    async loadFromObjFile(device: GPUDevice, objUrl: string, texUrl: string): Promise<MeshData> {
         const { positionBuffer, normalBuffer, texCoordBuffer, indexBuffer, indexSize } = await loadObj(device, objUrl)
         const gooseTexRes = await fetch(texUrl)
         const blob = await gooseTexRes.blob()
@@ -42,9 +42,9 @@ export namespace Mesh {
             texture,
             sampler
         }
-    }
+    },
 
-    export function circle(device: GPUDevice,
+    circle(device: GPUDevice,
         encoder: GPURenderPassEncoder, 
         center: [number, number], 
         radius: number, 

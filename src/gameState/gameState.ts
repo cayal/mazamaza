@@ -1,70 +1,187 @@
-import { Mesh } from "src/mesh/mesh"
+import { Mesh } from "../mesh/mesh"
 
-export type ResidualStateUnit<K extends string, T> = {
-    key: K,
-    put: (gameState: any, value: T) => object & { [key in K]: T }
-    pik: (gameState: any) => T
+type EnumMenu<
+    Keys extends string,
+    KeyOptions extends { [eventName in Keys]: string[] }
+> = {
+    withExpandedMenu: <K extends string, V extends string>(
+        key: K, ...value: V[]
+    ) => EnumMenu<Keys | K, KeyOptions & { [k in K]: V }>
+
+    records: Array<{[k in Keys]: KeyOptions[k]}>,
+    addRecord: <K extends Keys>(key: K, value: KeyOptions[K]) => void,
+    query: <K extends Keys>(key: K) => KeyOptions[K][]
 }
 
-export type ResidualSignal<Ps extends object> = {
-    name: string,
-    payloadSchema: Ps
+
+function InitEnumMenu<
+    Keys extends never,
+    KeyOptions extends { [eventName in Keys]: string[] }
+>(entries={}) {
+    const _menu = entries
+    const _records: Array<{[k in Keys]: KeyOptions[k]}> = []
+
+    return {
+        withExpandedMenu: <K extends string, V extends string>(
+            eventKey: K,
+            ...potentialValues: V[]
+        ): EnumMenu<Keys | K, KeyOptions & { [k in K]: V }> => {
+            return InitEnumMenu({..._menu, [eventKey]: potentialValues}) as EnumMenu<Keys | K, KeyOptions & { [k in K]: V; }>
+        },
+
+        records: _records,
+        addRecord: <P extends Keys>(x: P, y: KeyOptions[P]) => {
+            _records.push({ [x]: y } as { [k in Keys]: KeyOptions[k] })
+        },
+        query: <K extends Keys>(key: K): KeyOptions[K][] => {
+            return _records.filter((x) => key in x).map(x => x[key])
+        }
+    } as EnumMenu<Keys, KeyOptions>
 }
 
-export type ResidualReflex<Pr extends Partial<ResidualSignal<any>['payloadSchema']>> = {
+type FlexMenu<
+    Dishes extends string,
+    Flavors extends { [dishName in Dishes]: unknown },
+> = {
+    keys: Dishes[],
+    getLens: <D extends Dishes>(key: D) => EventualStateEntry<D, Flavors[D]>,
+    withExpandedMenu: <
+        const K extends string,
+        V,
+        O extends EventualStateEntry<K, V>
+    >(o: O) => FlexMenu<Dishes | O['key'], Flavors & {[o in O['key']]: O['iv']}>,
+}
+
+function InitFlexMenu<
+    Dishes extends never,
+    Flavors extends { [dishName in Dishes]: unknown },
+>(entries: { [d in Dishes]: EventualStateEntry<d, Flavors[d]> }={}): FlexMenu<Dishes, Flavors> {
+    const _menu = entries
+
+    return {
+        keys: Object.keys(_menu) as Dishes[],
+        getLens: <D extends Dishes>(key: D) => _menu[key],
+        withExpandedMenu: <
+            const K extends string,
+            V,
+            const O extends EventualStateEntry<K, V>
+        >(o: O): FlexMenu<Dishes | O['key'], Flavors & {[o in O['key']]: O['iv']}> => {
+            return InitFlexMenu({..._menu, [o.key]: o.iv })
+        },
+    }
+}
+
+export type EventualSignal<S extends string, Ps extends object> = {
+    readonly name: S,
+    payloadSchema: Ps,
+}
+
+export type EventualReflex<Pr extends Partial<EventualSignal<any>['payloadSchema']>> = {
     observedSignal: string,
-    callback: (payload: Pr) => void
+    callback: (payload: Pr) => void,
 }
+
+
+export type EventualStateEntry<K extends string, T> = {
+    readonly key: K,
+    iv: T,
+    put: (gameState: { [k in K]?: T }, value: T) => typeof gameState & { [key in K]: T }
+    pik: (gameState: { [k in K]?: T } ) => T
+}
+
+export type AppliedStateEntry<GS, K extends string, T> = {
+    readonly key: K,
+    iv: T,
+    set: (value: T) => GS
+    get: () => T
+}
+
+
+
+// { [dishName in Dishes]: EventualStateEntry<dishName, Flavors[dishName]> }
+
+
 
 const _gameState = () => {
     let _nextRealtimeEntity = 0
-    let _realtimeEntities = new Uint8Array(8192)
+    const _realtimeEntities = new BigUint64Array(8192)
 
-    let _residualStateUnits: Record<string, ResidualStateUnit<any, any>> = {}
+    const _eventualStateUnits: Record<string, EventualStateEntry<any, any>> = {}
     let _residualState: any = {}
 
-    let _residualStateSignals: Record<string, ResidualSignal<any>> = {}
-    let _residualStateReflexes: ResidualReflex<any>[] = []
+    const _eventualStateSignals: Record<string, EventualSignal<string, any>> = {
+        _dbgUpdate: { name: '_dbgUpdate', payloadSchema: { message: '', curState: {} } }
+    }
+    
+    const _dbgDispatch = (message: string) => {
+        _eventualReflexes.forEach(reflex => {
+            if (reflex.observedSignal === '_dbgUpdate') {
+                _eventualStateUnits['history'].put(_residualState, [..._residualState.history, { message, curState: _residualState }])
+                reflex.callback({ message, curState: _residualState })
+            }
+        })
+    }
+    
+    const _eventualReflexes: EventualReflex<any>[] = []
 
     let _timeId: NodeJS.Timeout | null = null;
     let _shouldRunGame = false
     let _t_last = performance.now()
-
+    
     return ({
+        applyStateEntry: <K extends string, T>({key, iv, put, pik}: {
+                                                          key: K
+                                                       iv: T,
+            put: (gameState: { [k in K]?: T }, value: T) => typeof gameState & { [key in K]: T },
+            pik: (gameState: { [k in K]?: T }) => T | null
+        }) => {
+            const wrappedPik = () => {
+                return pik(_residualState) ?? iv
+            }
+            const wrappedPut = (value: T) => {
+                const statePrime = put(_residualState, value)
+                _dbgDispatch('_dbgUpdate')
+                _dispatch(key, pik(statePrime))
+                return statePrime
+            }
+
+            return {key, iv, get: wrappedPik, set: wrappedPut } satisfies AppliedStateEntry<typeof _residualState, K, T>
+        },
+
         registerSignal: <P>(message: string, payload: P) => {
-            _residualStateSignals[message] = {
+            _dbgDispatch(`registerSignal: ${message}`)
+
+            _eventualStateSignals[message] = {
                 name: message,
-                payloadSchema: payload
+                payloadSchema: payload,
             }
         },
-        dispatch: (message: string, payload: any) => {
-            let _signal = _residualStateSignals[message]
-            if (!_signal) {
-                throw new RangeError(`No signal found for ${message}`)
-            }
-            _residualStateReflexes.forEach(reflex => {
-                if (reflex.observedSignal === message) {
-                    reflex.callback(payload)
-                }
-            })
+        dispatch: _dispatch,
+        useReflex: (reflex: EventualReflex<any>) => {
+            _dbgDispatch(`useReflex: ${reflex.observedSignal}`)
+
+            _eventualReflexes.push(reflex)
         },
-        useReflex: (reflex: ResidualReflex<any>) => {
-            _residualStateReflexes.push(reflex)
-        },
-        use: (unit: ResidualStateUnit<any, any>) => {
-            if (!_residualStateUnits[unit.key]) {
-                _residualStateUnits[unit.key] = unit
+        use: (unit: EventualStateEntry<any, any>) => {
+            _dbgDispatch(`use: ${unit.key}`)
+
+            if (!_eventualStateUnits[unit.key]) {
+                _eventualStateUnits[unit.key] = unit
             }
         },
         set: (key: string, value: any) => {
-            let u = _residualStateUnits[key]
+            _dbgDispatch(`set: ${key}`)
+
+            let u = _eventualStateUnits[key]
             if (!u) {
                 throw new RangeError(`No unit found for key ${key}`)
             }
             _residualState = u.put(_residualState, value)
         },
         get: (key: string) => {
-            let _unit = _residualStateUnits[key]
+            _dbgDispatch(`get: ${key}`)
+
+            let _unit = _eventualStateUnits[key]
             if (!_unit) {
                 throw new RangeError(`No unit found for key ${key}`)
             }
@@ -72,14 +189,18 @@ const _gameState = () => {
         },
         entities: _realtimeEntities,
         addEntity() {
+            _dbgDispatch(`addEntity`)
+
             const eid = _nextRealtimeEntity
-            _realtimeEntities[eid] = 1
+            _realtimeEntities[eid] = 1n
             _nextRealtimeEntity++
             return eid
         },
         components: _components(),
         systems: _systems(),
         initRealtime: (drawFrame: any) => {
+            _dbgDispatch(`initRealtime`)
+
             _shouldRunGame = true
 
             const reRender = async () => {
@@ -104,10 +225,22 @@ const _gameState = () => {
             
         },
         stopRealtime: () => {
+            _dbgDispatch(`stopRealtime`)
+
             clearTimeout(_timeId)
             _shouldRunGame = false
         }
     })
+
+    function _dispatch(message: string, payload: unknown) {
+        _dbgDispatch(`dispatch: ${message}`)
+
+        _eventualReflexes.forEach(reflex => {
+            if (reflex.observedSignal === message) {
+                reflex.callback(payload)
+            }
+        })
+    }
 }
 
 const _gs = _gameState()
@@ -119,17 +252,17 @@ _gs.set('history', [])
 export const gameState = _gs
 export type GameState = ReturnType<typeof _gameState>
 
-export type RealtimeSystem<K extends keyof RealtimeComponents> = {
+export type RealtimeSystemUnit<K extends keyof RealtimeComponents> = {
     componentNames: K[],
     update: (gameState: GameState, delta_t: number, components: ComponentQueriedEntities<K>[]) => void
 }
 
-export type RealtimeComponent<N extends number, T> = { bit: N, data: T }
+export type RealtimeComponentUnit<N extends bigint, T> = { bit: N, data: T }
 
 export type RealtimeComponents = {
-    MeshBundle: RealtimeComponent<0b00000010, Mesh.MeshData>,
+    MeshBundle: RealtimeComponentUnit<0b00000010n, Mesh.MeshData>,
     Position3d: {
-        bit: 0b00000100,
+        bit: 0b00000100n,
         data: {
             angleX: number,
             angleY: number,
@@ -140,19 +273,19 @@ export type RealtimeComponents = {
         }
     },
     Gravity: {
-        bit: 0b00001000,
+        bit: 0b00001000n,
         data: { accel: number }
     },
     PlayerControl: {
-        bit: 0b00010000,
+        bit: 0b00010000n,
         data: { jumpForce: number }
     },
     Velocity: {
-        bit: 0b00100000,
+        bit: 0b00100000n,
         data: { velocityX: number, velocityY: number, velocityZ: number }
     },
     Acceleration: {
-        bit: 0b01000000,
+        bit: 0b01000000n,
         data: { accelX: number, accelY: number, accelZ: number }
     }
 }
@@ -160,19 +293,19 @@ export type RealtimeComponents = {
 type RealtimeComponentBitmap = { [key in keyof RealtimeComponents]: RealtimeComponents[key]['bit'] }
 type RealtimeEntityComponentData = { [key in keyof RealtimeComponents]: { [eid: number]: RealtimeComponents[key]['data'] } }
 type ComponentQueriedEntities<K extends keyof RealtimeComponents> = { eid: number, datas: { [Ki in K]: RealtimeComponents[Ki]['data'] } }
-type RealtimeComponentUnit = {
-    attach: (entities: Uint8Array, eid: number, componentName: keyof RealtimeComponents, data: RealtimeComponents[typeof componentName]['data']) => void
-    query: <K extends keyof RealtimeComponents>(entities: Uint8Array, ...componentNames: K[]) => Array<ComponentQueriedEntities<K>>
+type RealtimeCompsh = {
+    attach: (entities: BigUint64Array, eid: number, componentName: keyof RealtimeComponents, data: RealtimeComponents[typeof componentName]['data']) => void
+    query: <K extends keyof RealtimeComponents>(entities: BigUint64Array, ...componentNames: K[]) => Array<ComponentQueriedEntities<K>>
 }
 
-function _components(): RealtimeComponentUnit {
+function _components(): RealtimeCompsh {
     const _cbitmap: RealtimeComponentBitmap = {
-        MeshBundle: 0b00000010,
-        Position3d: 0b00000100,
-        Gravity: 0b00001000,
-        PlayerControl: 0b00010000,
-        Velocity: 0b00100000,
-        Acceleration: 0b01000000
+        MeshBundle: 0b00000010n,
+        Position3d: 0b00000100n,
+        Gravity:    0b00001000n,
+        PlayerControl: 0b00010000n,
+        Velocity:      0b00100000n,
+        Acceleration:  0b01000000n
     }
 
     const _ecdata: RealtimeEntityComponentData = {
@@ -186,7 +319,7 @@ function _components(): RealtimeComponentUnit {
 
     return {
         attach(
-            entities: Uint8Array, 
+            entities: BigUint64Array, 
             eid: number, 
             componentName: keyof RealtimeComponents, 
             data: RealtimeComponents[typeof componentName]['data']
@@ -196,10 +329,10 @@ function _components(): RealtimeComponentUnit {
         },
         
         query<K extends keyof RealtimeComponents>(
-            entities: Uint8Array, 
+            entities: BigUint64Array, 
             ...componentNames: K[]
         ): Array<ComponentQueriedEntities<K>> {
-            const componentBits = componentNames.reduce((acc, componentName) => acc | _cbitmap[componentName], 0)
+            const componentBits = componentNames.reduce((acc, componentName) => acc | _cbitmap[componentName], 0n)
 
             const result: Array<ComponentQueriedEntities<K>> = []
 
@@ -216,16 +349,16 @@ function _components(): RealtimeComponentUnit {
 }
 
 
-type RealtimeSystemUnit = {
-    register: (system: RealtimeSystem<any>) => void
+type RealtimeSystems = {
+    register: (system: RealtimeSystemUnit<any>) => void
     tick: (gameState: GameState, delta_t: number) => void
 }
 
-function _systems(): RealtimeSystemUnit {
-    let _systems: RealtimeSystem<any>[] = []
+function _systems(): RealtimeSystems {
+    let _systems: RealtimeSystemUnit<any>[] = []
 
     return {
-        register: (system: RealtimeSystem<any>) => {
+        register: (system: RealtimeSystemUnit<any>) => {
             _systems.push(system)
         },
         tick: (gameState: GameState, delta_t: number) => {

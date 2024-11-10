@@ -1,13 +1,13 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
+    "target": "ES2023",
     "module": "commonjs",
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "noImplicitAny": true,
-    "sourceMap": true,
-    "baseUrl": ".",
+    "sourceMap": false,
+    "baseUrl": "./src",
     "types": ["@webgpu/types"],
     "outDir": "dist",
     "moduleResolution": "node",

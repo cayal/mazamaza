@@ -1,13 +1,15 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <title>PyFriends WGPU</title>
 
   </head>
   <body>
-    <script type="module" src="/src/renderer.ts"></script>
+  <script type="module" src="/src/renderer.ts"></script>
+  <game-state>
     <pointer-glass class="pointer-glass"></pointer-glass>
+    <debug-info class="debug-info"></debug-info>
     <modal-dialogue class="modal-scene-display" style="visibility: hidden">
       <p class="dialogue"></p>
     </modal-dialogue>
@@ -17,5 +19,6 @@
     <three-d-stage class="three-d-stage">
       <canvas id="canvas" width="640" height="480" style="opacity: 0;"></canvas>
     </three-d-stage>
+  </game-state>
   </body>
 </html>

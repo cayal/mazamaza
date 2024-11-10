@@ -42,3 +42,16 @@ body {
     justify-content: center;
   }
 }
+
+@layer debug-info {
+  .debug-info {
+    position: absolute;
+    pointer-events: none;
+    z-index: 50;
+    font-family: monospace;
+    white-space: pre;
+    font-size: smaller;
+    color: red;
+    background: rgba(0, 0, 0, 0.5); 
+  }
+}

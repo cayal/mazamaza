@@ -17,5 +17,8 @@ import { defineConfig, PluginOption, transformWithEsbuild } from 'vite';
 // https://vitejs.dev/config
 export default defineConfig({
     publicDir: 'static',
+    esbuild: {
+        target: 'es2023'
+    }
     // plugins: [blobLoader]
 });

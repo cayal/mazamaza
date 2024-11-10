@@ -1,45 +1,34 @@
 import './index.css';
 
-const gameScript: Generator<void | void[]> = GameScript()
+const gameScript: Generator<void | void[]> = (() => {
+    const _scr = GameScript()
 
-// @ts-ignore
+    return {
+        ..._scr, 
+        next: () => {
+            const res = _scr.next()?.value
+            if (typeof res === "object" && 'length' in res) {
+                gameState.set('history', [...gameState.get('history'), ...res.filter(x => typeof x !== "undefined")])
+            } else if (res) {
+                gameState.set('history', [...gameState.get('history'), res])
+            }
+            return res
+        }
+    }}
+)()
+
 import mainShaderSrc from './vertex.wgsl?raw';
 
-// @ts-ignore
-import sketchShaderSrc from './sketch.wgsl?raw';
-
-//@ts-ignore 
-import jewelUrl from './static/Jewel/Jewel_05.obj?url'
-
-//@ts-ignore
 import gooseUrl from './static/Goose/Mesh_Goose.obj?url'
 
-// @ts-ignore
 import gooseTexUrl from './static/Goose/Tex_Goose.png'
 
-// @ts-ignore
-import catImg from './static/celeste.png'
 import glMatrix from './glMatrix';
-import { loadObj } from './objFile';
 import { GameScript } from './script';
-import { GameState, gameState, RealtimeSystem, ResidualStateUnit } from './gameState/gameState';
+import {GameState, gameState, EventualStateEntry, AppliedStateEntry,} from './gameState/gameState';
 import { GFX } from './gfx/gfx';
 import { CanvasSetup } from './setup/canvasSetup';
 import { Mesh } from './mesh/mesh';
-
-
-
-
-namespace Location3d {
-    export type Location3dData = {
-        angleX: number,
-        angleY: number,
-        angleZ: number,
-        positionX: number,
-        positionY: number,
-        positionZ: number
-    }
-}
 
 namespace ViewMatrix {
     export type ViewAngles  = {
@@ -64,22 +53,22 @@ namespace ViewMatrix {
             mvAngleZ: 0
         }
             
-        let projectionMatrix = glMatrix.mat4.perspective(
+        const projectionMatrix = glMatrix.mat4.perspective(
             glMatrix.mat4.create(),
             1.4, 640.0 / 480.0, 0.1, 1000.0) as unknown as Float32Array;
-        let projectionMatrixUniformBuffer = GFX.createBuffer(device, projectionMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'pmUniformBuffer');
+        const projectionMatrixUniformBuffer = GFX.createBuffer(device, projectionMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'pmUniformBuffer');
 
 
-        let modelViewMatrix = glMatrix.mat4.lookAt(glMatrix.mat4.create(),
+        const modelViewMatrix = glMatrix.mat4.lookAt(glMatrix.mat4.create(),
         glMatrix.vec3.fromValues(100 * Math.PI / 2, 70 * Math.sin(viewMatrixData.mvAngleX), 0), 
         glMatrix.vec3.fromValues(0, 0, 0), 
         glMatrix.vec3.fromValues(-1.0, 0.0, 0.0)) as unknown as Float32Array;
 
-        let modelViewMatrixUniformBuffer = GFX.createBuffer(device, modelViewMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'modelViewMatrixBuf');
-        let modelViewMatrixInverse = glMatrix.mat4.invert(glMatrix.mat4.create(), modelViewMatrix);
+        const modelViewMatrixUniformBuffer = GFX.createBuffer(device, modelViewMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'modelViewMatrixBuf');
+        const modelViewMatrixInverse = glMatrix.mat4.invert(glMatrix.mat4.create(), modelViewMatrix);
 
-        let normalMatrix = glMatrix.mat4.transpose(glMatrix.mat4.create(), modelViewMatrixInverse) as unknown as Float32Array;
-        let normalMatrixUniformBuffer = GFX.createBuffer(device, normalMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'normUniformBuffer');
+        const normalMatrix = glMatrix.mat4.transpose(glMatrix.mat4.create(), modelViewMatrixInverse) as unknown as Float32Array;
+        const normalMatrixUniformBuffer = GFX.createBuffer(device, normalMatrix, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'normUniformBuffer');
 
         return {
             modelViewMatrix,
@@ -89,38 +78,85 @@ namespace ViewMatrix {
             projectionMatrix,
             projectionMatrixUniformBuffer
         }
-
     }
 }
 
+type AppStatefulElement = {
+    eventualState: object
+    immediateState: object
+    hostEl: HTMLElement
+}
+
 namespace GameElements {
-    export class PointerGlass extends HTMLElement {
+    export class DebugInfo extends HTMLElement {
         hostEl: HTMLElement
 
         constructor() {
-            // @ts-ignore
             const _hel = super()
-            //
-            // @ts-ignore
-            this.hostEl = _hel as HTMLElement
+
+            this.hostEl = _hel as unknown as HTMLElement
         }
 
         connectedCallback() {
-            console.log('PointerGlass connected')
-            gameState.registerSignal('user.clickedMouse', {})
-            this.hostEl.addEventListener('click', (e) => {
-                gameState.dispatch('user.clickedMouse', {})
+            console.log('DebugInfo connected')
+            gameState.useReflex({
+                observedSignal: '_dbgUpdate',
+                callback: (payload) => {
+                    console.log('DebugInfo callback', payload)
+                    this.hostEl.innerHTML = JSON.stringify(payload.curState, undefined, 4)
+                }
             })
         }
     }
 
-    export class ModalDialogue extends HTMLElement {
+    export class PointerGlass extends HTMLElement implements AppStatefulElement {
         hostEl: HTMLElement
+        eventualState = gameState.applyStateEntry({
+            key: 'pointerInfo',
+            iv: {coords: [0, 0] as [number, number], lastClicked: performance.now()},
+            put: (gameState, value) => {
+                console.log('put pointer', { ...gameState, pointerInfo: value })
+                return { ...gameState, pointerInfo: value }
+            },
+            pik: (gameState) => gameState?.pointerInfo
+        })
+
+        constructor() {
+            const _hel = super()
+
+            this.hostEl = _hel as unknown as HTMLElement
+        }
+
+        connectedCallback() {
+            this.hostEl.addEventListener('mousemove', (e) => {
+                this.eventualState.set({ coords: [e.x, e.y], lastClicked: 0 })
+            })
+        }
+    }
+
+    export class ModalDialogue extends HTMLElement implements AppStatefulElement {
+        hostEl: HTMLElement
+        eventualState: EventualStateEntry<'modalDialogue', string> = {
+            key: 'modalDialogue',
+            iv: '',
+            put: (gameState, value) => {
+                const statePrime = {
+                    ...gameState,
+                    modalDialogue: value
+                }
+                this.targetText = value
+                return statePrime
+            },
+            pik: (gameState) => gameState.modalDialogue ?? ''
+        }
+
         #appendTimeout: NodeJS.Timeout | null = null
         #tt = ''
+
         get targetText() {
             return this.#tt
         }
+
         set targetText(newText: string) {
             this.hostEl.innerHTML = ''
             this.#tt = newText
@@ -139,32 +175,18 @@ namespace GameElements {
             appendText()
         }
 
-        _stateUnit: ResidualStateUnit<'modalDialogue', string> = {
-            key: 'modalDialogue',
-            put: (gameState, value) => {
-                let statePrime = {
-                    ...gameState,
-                    modalDialogue: value
-                }
-                this.targetText = value
-                return statePrime
-            },
-            pik: (gameState) => gameState?.modalDialogue ?? ''
-        }
 
         constructor() {
-            // @ts-ignore
             const _hel = super()
-            //
-            // @ts-ignore
-            this.hostEl = _hel as HTMLElement
+
+            this.hostEl = _hel as unknown as HTMLElement
         }
 
         connectedCallback() {
             console.log('ModalScene connected')
-            gameState.use(this._stateUnit)
+            gameState.use(this.eventualState)
             gameState.useReflex({
-                observedSignal: 'user.clickedMouse',
+                observedSignal: 'PointerGlass.down',
                 callback: (_) => {
                     if (gameState.get('shownScreen') === 'modalDialogue') {
                         gameScript.next()
@@ -192,11 +214,9 @@ namespace GameElements {
         hostEl: HTMLElement
 
         constructor() {
-            // @ts-ignore
             const _hel = super()
             
-            // @ts-ignore
-            this.hostEl = _hel as HTMLElement
+            this.hostEl = _hel as unknown as HTMLElement
         }
 
         connectedCallback() {
@@ -255,10 +275,10 @@ namespace GameElements {
         }
 
         drawFrame = async (gameState: GameState) => {
-            let commandEncoder: GPUCommandEncoder = this.device.createCommandEncoder()
+            const commandEncoder: GPUCommandEncoder = this.device.createCommandEncoder()
             
-            let depthTexture: GPUTexture | null = null
-            let depthAttachment: GPURenderPassDepthStencilAttachment | null = null
+            const depthTexture: GPUTexture | null = null
+            const depthAttachment: GPURenderPassDepthStencilAttachment | null = null
 
 
             const meshComponents = gameState.components.query(gameState.entities, 'MeshBundle')
@@ -281,11 +301,9 @@ namespace GameElements {
         }
 
         constructor() {
-            // @ts-ignore
             const _hel = super()
             
-            // @ts-ignore
-            this.hostEl = _hel as HTMLElement
+            this.hostEl = _hel as unknown as HTMLElement
         }
 
         
@@ -389,10 +407,10 @@ namespace GameElements {
                     depthAttachmentNew = depthAttachment
                 }
                 
-                let colorTexture = context.getCurrentTexture();
-                let colorTextureView = colorTexture.createView();
+                const colorTexture = context.getCurrentTexture();
+                const colorTextureView = colorTexture.createView();
 
-                let colorAttachment: GPURenderPassColorAttachment = {
+                const colorAttachment: GPURenderPassColorAttachment = {
                     view: colorTextureView,
                     clearValue: { r: 0.3, g: 0.7, b: 1.0, a: 1 },
                     loadOp: 'clear',
@@ -409,7 +427,7 @@ namespace GameElements {
                         viewMatrices.projectionMatrixUniformBuffer, 0, viewMatrices.projectionMatrix.byteLength);
                 }
 
-                let passEncoder = commandEncoder.beginRenderPass(renderPassDesc);
+                const passEncoder = commandEncoder.beginRenderPass(renderPassDesc);
 
                 passEncoder.setViewport(0, 0, canvas.width, canvas.height, 0, 1);
 
@@ -428,9 +446,10 @@ namespace GameElements {
                 return;
             }
             
-            let startingAngle = Math.PI / 2
+            const startingAngle = Math.PI / 2
             gameState.use({
                 key: 'globalViewAngle',
+                iv: 0,
                 put: (gameState, value) => ({ ...gameState, angle: value }),
                 pik: (gameState) => gameState.angle
             })
@@ -439,11 +458,11 @@ namespace GameElements {
 
             this.canvas = canvas
 
-            let { device, context } = await CanvasSetup.getWebGPUContext(canvas)
+            const { device, context } = await CanvasSetup.getWebGPUContext(canvas)
             this.device = device
             this.context = context
             
-            let gooseEid = gameState.addEntity()
+            const gooseEid = gameState.addEntity()
 
             gameState.components.attach(gameState.entities, gooseEid, 'MeshBundle', await Mesh.loadFromObjFile(this.device, gooseUrl, gooseTexUrl))
             gameState.components.attach(gameState.entities, gooseEid, 'Position3d', {
@@ -457,7 +476,7 @@ namespace GameElements {
             // await this.attachComponent(gooseTwoEid, 'mesh', await Mesh.loadFromObjFile(this.device, jewelUrl, gooseTexUrl))
             
             gameState.useReflex({
-                observedSignal: 'user.clickedMouse',
+                observedSignal: 'PointerGlass.down',
                 callback: () => {
                     const controlledComponents = gameState.components.query(gameState.entities, 'PlayerControl')
                     controlledComponents.forEach(cc => {
@@ -488,7 +507,7 @@ namespace GameElements {
                 observedSignal: 'visibilityChange',
                 callback: async (payload) => {
                     if (payload == 'flappy-game') {
-                        document.querySelector('flappy-game').style.visibility = 'visible'
+                        (document.querySelector('flappy-game') as HTMLElement).style.visibility = 'visible'
                     }
                 }
             })
@@ -529,7 +548,9 @@ namespace GameElements {
 }
 
 
+
 customElements.define('pointer-glass', GameElements.PointerGlass)
+customElements.define('debug-info', GameElements.DebugInfo)
 customElements.define('modal-dialogue', GameElements.ModalDialogue)
 customElements.define('flappy-game', GameElements.Flappy)
 customElements.define('three-d-stage', GameElements.ThreeDStage)
