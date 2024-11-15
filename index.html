@@ -7,18 +7,11 @@
   </head>
   <body>
   <script type="module" src="/src/renderer.ts"></script>
-  <game-state>
-    <pointer-glass class="pointer-glass"></pointer-glass>
-    <debug-info class="debug-info"></debug-info>
-    <modal-dialogue class="modal-scene-display" style="visibility: hidden">
-      <p class="dialogue"></p>
-    </modal-dialogue>
-    <flappy-game class="modal-scene-display" style="visibility: hidden">
-      <h1>ui visible</h1>
-    </flappy-game>
-    <three-d-stage class="three-d-stage">
-      <canvas id="canvas" width="640" height="480" style="opacity: 0;"></canvas>
-    </three-d-stage>
-  </game-state>
+  <pointer-pane class="pointer-pane"></pointer-pane>
+  <debug-info class="debug-info"></debug-info>
+  <modal-ui></modal-ui>
+  <canvas-display class="canvas-display">
+    <canvas id="canvas" width="640" height="480" style="opacity: 0;"></canvas>
+  </canvas-display>
   </body>
 </html>

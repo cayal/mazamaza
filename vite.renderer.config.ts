@@ -8,8 +8,8 @@ import { defineConfig, PluginOption, transformWithEsbuild } from 'vite';
 //         if (query !== 'raw-blob')
 //             return null
 
-//         const data = readFileSync(path)
-//         const blob = new Blob([data])
+//         const iv = readFileSync(path)
+//         const blob = new Blob([iv])
 //         return `export default ${JSON.stringify(blob)}`
 //     }
 // }
