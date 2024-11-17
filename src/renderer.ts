@@ -210,7 +210,7 @@ class CanvasDisplay extends HTMLElement {
     drawBalls(immediateStates: typeof appState.immediate) {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
         const q = immediateStates.query({ all: ['position'] })
-        
+
         q.attachments.position.read(...q.eids).forEach(({ x, y }: { x: number, y: number }) => {
             this.ctx.fillStyle = 'blue'
             const sx = (x) * this.canvas.width

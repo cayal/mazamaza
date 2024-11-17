@@ -342,19 +342,6 @@ export function ImmediateStates<
         }
     }
 
-    function _eidFieldSetTrue(eid: number, dataview: DataView) {
-        const offset = Math.floor(eid / 32)
-        const chunk = dataview.getUint32(offset)
-        dataview.setUint32(offset, chunk | 2 ** (eid % 32))
-    }
-
-    function _eidFieldSetFalse(eid: number, dataview: DataView) {
-        const full = 2 ** 32 - 1
-        const offset = Math.floor(eid / 32)
-        const chunk = dataview.getUint32(offset)
-        dataview.setUint32(offset, chunk & (full - 2 ** (eid % 32)))
-    }
-
     function _entityExists(eid: number) { return componentSet.haveAny([eid], '__existence__').length > 0 }
 
 }
