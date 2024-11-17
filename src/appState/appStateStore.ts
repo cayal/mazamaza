@@ -1,7 +1,7 @@
 import { ImmediateStates} from "./immediateStates";
 
-export type EventsOf<AS extends ReturnType<ReturnType<typeof AppState>>> = (
-    AS extends ReturnType<ReturnType<typeof AppState>> ? AS['eventSchema'] : never)
+export type EventsOf<AS extends ReturnType<ReturnType<typeof AppStateStore>>> = (
+    AS extends ReturnType<ReturnType<typeof AppStateStore>> ? AS['eventSchema'] : never)
 
 export type Dispatcher<ES> = <K extends keyof ES>(name: K, value: ES[K]) => Promise<void>
 
@@ -10,7 +10,7 @@ export type SubscribeDecorator<ES> = <This, Args extends unknown[], Return>(
     context: ClassMethodDecoratorContext<HTMLElement, (this: HTMLElement, curState: unknown, immediateStates: unknown, dt: number) => void>,
 ) => void
 
-export const AppState = <
+export const AppStateStore = <
     const IS extends ReturnType<typeof ImmediateStates>
 >({ immediateStates }: { immediateStates: IS }) => <
     ES extends { readonly [ek in keyof ES]: ES[ek] },
