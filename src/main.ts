@@ -17,9 +17,12 @@ const createWindow = () => {
   });
 
   // and load the index.html of the app.
+  // @ts-expect-error Vite global.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    // @ts-expect-error Vite global.
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
+    // @ts-expect-error Vite global.
     mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
 

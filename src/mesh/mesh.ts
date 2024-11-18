@@ -48,7 +48,7 @@ export const Mesh = {
         encoder: GPURenderPassEncoder, 
         center: [number, number], 
         radius: number, 
-        color: [number, number, number]): Partial<Mesh.MeshData> {
+        color: [number, number, number]): Partial<MeshData> {
 
             const vertexCount = 12
             

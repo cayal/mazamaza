@@ -2,42 +2,64 @@ import {Sizable, SizedData} from "./sizedDataTypes";
 
 export function CompBuiltIns<const X extends string>(list: X[]) { return list }
 
+export const BYTES_PER_EID = 8
+
 export const compBuiltins = CompBuiltIns(['__existence__'])
 
 export type BuiltinKeys = (typeof compBuiltins)[number]
 
 export function ImmediateComponentSet<Names extends string>(
-    eidMaxCount: number,
-    ...zeroToNNames: Names[]
+    {eidMaxCount, componentNames}:{
+        eidMaxCount: number,
+        componentNames: Names[]
+    }
 ) {
-    type NamesXL = Names | BuiltinKeys
+    const availableNamedBits = (BYTES_PER_EID * 8) - (compBuiltins.length)
 
-    const BYTES_PER_EID = 4
+    const totalComponentBits = compBuiltins.length + componentNames.length
 
-    if (zeroToNNames.length > BYTES_PER_EID * 8) {
-        throw new RangeError(`Can't use > ${BYTES_PER_EID * 8} names (provided: ${zeroToNNames.length}).`)
+    if (totalComponentBits > availableNamedBits) {
+        throw new RangeError(`Can't use > ${availableNamedBits} names (provided: ${componentNames.length}).`)
     }
 
     const presenceField = new DataView(new ArrayBuffer(BYTES_PER_EID * eidMaxCount))
 
-    const masks = new Map<NamesXL, number>()
-    masks.set('__existence__', 0b00000000_00000000_00000000_0000001)
-    zeroToNNames.forEach((compName, i) => {
-        masks.set(compName, 2 ** (i+1))
-    })
+    // Masks are bits (2**x) in the byte field, e.g. 0b00000000_00000000_00000000_0000001 for '__existence__'.
+    const bitSpitter = (function* yieldNextBit() {
+        for (let i = 0; i < totalComponentBits; i++) {
+            yield 2 ** i
+        }
+    })()
 
-    const compNum = (...compNames: NamesXL[]) => compNames.reduce((acc, cn) => (acc | masks.get(cn)), 0)
+    type NamesXL = Names | BuiltinKeys
+
+    const componentMasks = new Map<NamesXL, number>()
+
+    const setBit = (cName: NamesXL) => {
+        let res;
+        if (!(res = bitSpitter.next()?.value)) {
+            throw new RangeError(`No component bits left to allocate. (Total: ${totalComponentBits})`)
+        }
+        componentMasks.set(cName, res)
+    }
+
+    compBuiltins.forEach(setBit)
+
+    // Start the sized component area after builtin components are allocated.
+    componentNames.forEach(setBit)
+
+    const compNum = (...compNames: NamesXL[]) => compNames.reduce((acc, cn) => (acc | componentMasks.get(cn)), 0)
 
     const allEIDs = Array(eidMaxCount).fill(0).map((_, i) => i)
 
     return {
         eidMaxCount,
-        names: zeroToNNames,
+        componentNames,
         count:  _count,
         haveAll: _haveAll,
         haveAny: _haveAny,
         include: _include,
-        declude: _declude
+        declude: _declude,
     }
 
     function _count(compName: NamesXL) {
@@ -53,7 +75,7 @@ export function ImmediateComponentSet<Names extends string>(
         const _eids = eids.length == 0 ? allEIDs : eids
         return _eids.filter(eid => {
             const subject = presenceField.getUint32(BYTES_PER_EID * eid, true)
-            return compNames.some(cn => (subject & masks.get(cn)) > 0)
+            return compNames.some(cn => (subject & componentMasks.get(cn)) > 0)
         })
     }
 
@@ -77,7 +99,7 @@ export function ImmediateComponentSet<Names extends string>(
 
 export function ImmediateSizedAttachment<D>(
     componentSet: ReturnType<typeof ImmediateComponentSet<string>>,
-    name: (typeof componentSet)['names'][number],
+    name: (typeof componentSet)['componentNames'][number],
     sizable: Sizable<D>
 ) {
     const storageField = new DataView(new ArrayBuffer(sizable.bytesPerElement * componentSet.eidMaxCount))
@@ -115,13 +137,14 @@ export function ImmediateStates<
     const Stages extends string
 >(schema: {
     maxEIDs: number,
+    maxResources: number,
     bitComponents: BC,
     sizedComponents: SC,
     sizedAttachments: ((keyof SizedCompSpecs & string) extends SizedKeys
         ? (SizedKeys extends (keyof SizedCompSpecs & string)
             ? SizedCompSpecs
             : never & { _debugInfo: 'Some members listed in `sizedComponents` are missing attachments.' })
-        : never & { _debugInfo: 'Too many attachments provided relative to the `sizedComponents` option.' })
+        : never & { _debugInfo: 'Too many attachments provided relative to the `sizedComponents` option.' }),
     integrationStages: readonly Stages[]
 }) {
     if (schema.maxEIDs < 32) {
@@ -130,10 +153,14 @@ export function ImmediateStates<
 
     const allComponents: (BitKeys | SizedKeys)[] = [
         ...schema.bitComponents as unknown as BitKeys[],
-        ...Object.keys(schema.sizedAttachments) as SizedKeys[]
+        ...Object.keys(schema.sizedAttachments) as SizedKeys[],
     ]
 
-    const componentSet = ImmediateComponentSet(schema.maxEIDs, ...allComponents)
+    const componentSet = ImmediateComponentSet({
+        eidMaxCount: schema.maxEIDs,
+        componentNames: allComponents
+    })
+
     const sizedAttachments = Object.keys(schema.sizedAttachments)
         .reduce<Record<SizedKeys, ReturnType<typeof ImmediateSizedAttachment>>>((acc, k: SizedKeys) => ({
             ...acc,
@@ -165,7 +192,8 @@ export function ImmediateStates<
              eid: number,
              data: {[rk in SizedKeys]: SizedCompSpecs[rk]['iv']}
             ) => {
-                [wk in (BuiltinKeys | BitKeys | SizedKeys)]: wk extends BitKeys | BuiltinKeys
+                [wk in (BuiltinKeys | BitKeys | SizedKeys)]:
+                 wk extends BitKeys | BuiltinKeys
                     ? boolean
                     : wk extends SizedKeys
                         ? SizedCompSpecs[wk]['iv']
@@ -269,7 +297,7 @@ export function ImmediateStates<
     }
 
     function _hasComponent<K extends BitKeys | SizedKeys>(eid: number, compName: K): boolean {
-        if (!componentSet.names.includes(compName)) {
+        if (!componentSet.componentNames.includes(compName)) {
             console.warn(`hasComponent() | Missing component: ${compName}`)
             return false
         }
@@ -279,14 +307,15 @@ export function ImmediateStates<
 
     function _query<
         Qk extends BitKeys | SizedKeys,
-        AT extends {[sk in Qk & SizedKeys]: typeof sizedAttachments[sk]}
     >(query: { all: Qk[] }) {
+        type AT = {[sk in Qk & SizedKeys]: typeof sizedAttachments[sk]}
+
         const matchedEids = componentSet.haveAll([], '__existence__', ...query.all)
         return {
             compNames: query.all,
             eids: matchedEids,
-            attachments: Object.entries<Sizable<unknown>>(schema.sizedAttachments).reduce<AT>((acc, spec) => {
-                const sk: SizedKeys = spec[0] as SizedKeys
+            attachments: Object.keys(sizedAttachments).reduce<AT>((acc, spec) => {
+                const sk: SizedKeys = spec as SizedKeys
 
                 if (!query.all.includes(sk as Qk)) { return acc }
 
@@ -294,7 +323,7 @@ export function ImmediateStates<
                     ...acc,
                     [sk]: sizedAttachments[sk]
                 }
-            }, {} as AT)
+            }, {} as AT),
         }
     }
 
@@ -307,10 +336,11 @@ export function ImmediateStates<
             willRead: WillRead[],
             willWrite: WillWrites,
         }) {
-            return function _supplySpec<CB extends (eventualState: unknown,
-                                                    dt: number,
-                                                    eid: number,
-                                                    data: {[rk in WillRead]: SizedCompSpecs[rk]['iv']}
+            return function _supplySpec<CB extends (
+                eventualState: unknown,
+                dt: number,
+                eid: number,
+                data: {[rk in WillRead]: SizedCompSpecs[rk]['iv'] },
             ) => {
                 [wk in WillWrites[number]]: wk extends BitKeys | BuiltinKeys
                     ? boolean
