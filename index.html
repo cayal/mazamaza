@@ -2,14 +2,43 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>PyFriends WGPU</title>
+    <title>Fandemo2</title>
 
   </head>
   <body>
   <script type="module" src="/src/renderer.ts"></script>
-  <pointer-pane class="pointer-pane"></pointer-pane>
+  <pointer-pane class="pointer-pane">
+    <modal-ui class="modal-ui">
+      <section class="animal-carousel">
+        <h2>Animals To Experience</h2>
+        <ul>
+          <li>
+            <div class="player-poster">
+              <img class="player-thumbnail" src="/src/static/thumb1.png" alt="Potato Dog (2022)">
+              <img class='play-button' src="/src/static/play.svg" alt="Play">
+            </div>
+            <p>Potato Dog (2022) – Otto Watches the Gang Wash Potatoes</p>
+          </li>
+          <li>
+            <div class="player-poster">
+              <img class="player-thumbnail" src="/src/static/thumb2.png" alt="Celeste the Magical Cat (2023)">
+              <img class='play-button' src="/src/static/play.svg" alt="Play">
+            </div>
+            <p>Celeste the Magical Cat: Behind the Scenes - In the Tower</p>
+          </li>
+          <li>
+            <div class="player-poster">
+              <img class="player-thumbnail" src="/src/static/thumb3.png" alt="Snow Crows 2: Crow Party (2024)">
+              <img class='play-button' src="/src/static/play.svg" alt="Play">
+            </div>
+            <p>Snow Crows 2: Crow Party (2024) "Wow, that's a lot of crows!"<br> – Bystander</p>
+          </li>
+        </ul>
+        <video src="/src/static/video1.mp4"></video>
+      </section>
+    </modal-ui>
+  </pointer-pane>
   <debug-info class="debug-info"></debug-info>
-  <modal-ui></modal-ui>
   <canvas-display class="canvas-display">
     <canvas id="canvas" width="640" height="480" style="opacity: 0;"></canvas>
   </canvas-display>
