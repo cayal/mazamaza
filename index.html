@@ -9,32 +9,38 @@
   <script type="module" src="/src/renderer.ts"></script>
   <pointer-pane class="pointer-pane">
     <modal-ui class="modal-ui">
-      <section class="animal-carousel">
-        <h2>Animals To Experience</h2>
-        <ul>
-          <li>
-            <div class="player-poster">
-              <img class="player-thumbnail" src="/src/static/thumb1.png" alt="Potato Dog (2022)">
-              <img class='play-button' src="/src/static/play.svg" alt="Play">
-            </div>
-            <p>Potato Dog (2022) – Otto Watches the Gang Wash Potatoes</p>
-          </li>
-          <li>
-            <div class="player-poster">
-              <img class="player-thumbnail" src="/src/static/thumb2.png" alt="Celeste the Magical Cat (2023)">
-              <img class='play-button' src="/src/static/play.svg" alt="Play">
-            </div>
-            <p>Celeste the Magical Cat: Behind the Scenes - In the Tower</p>
-          </li>
-          <li>
-            <div class="player-poster">
-              <img class="player-thumbnail" src="/src/static/thumb3.png" alt="Snow Crows 2: Crow Party (2024)">
-              <img class='play-button' src="/src/static/play.svg" alt="Play">
-            </div>
-            <p>Snow Crows 2: Crow Party (2024) "Wow, that's a lot of crows!"<br> – Bystander</p>
-          </li>
-        </ul>
+      <video-modal>
         <video src="/src/static/video1.mp4"></video>
+      </video-modal>
+      <section class="animals">
+        <h2>Videos</h2>
+        <animal-carousel>
+          <img class="disabled carousel-arrow carousel-arrow_left" src="/src/static/carousel-arrow.svg" alt="scroll left" />
+          <img class="carousel-arrow carousel-arrow_right" src="/src/static/carousel-arrow.svg" alt="scroll right" />
+          <ul class="animal-carousel-list">
+            <li>
+              <div class="player-poster">
+                <img class="player-thumbnail" src="/src/static/thumb1.png" alt="Potato Dog (2022)">
+                <img class='play-button' src="/src/static/play.svg" alt="Play">
+              </div>
+              <p>Potato Dog (2022) – Otto Watches the Gang Wash Potatoes</p>
+            </li>
+            <li>
+              <div class="player-poster">
+                <img class="player-thumbnail" src="/src/static/thumb2.png" alt="Celeste the Magical Cat (2023)">
+                <img class='play-button' src="/src/static/play.svg" alt="Play">
+              </div>
+              <p>Celeste the Magical Cat: Behind the Scenes - In the Tower</p>
+            </li>
+            <li>
+              <div class="player-poster">
+                <img class="player-thumbnail" src="/src/static/thumb3.png" alt="Snow Crows 2: Crow Party (2024)">
+                <img class='play-button' src="/src/static/play.svg" alt="Play">
+              </div>
+              <p>Snow Crows 2: Crow Party (2024) "Wow, that's a lot of crows!"<br> – Bystander</p>
+            </li>
+          </ul>
+        </animal-carousel>
       </section>
     </modal-ui>
   </pointer-pane>

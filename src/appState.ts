@@ -14,12 +14,16 @@ export async function MakeAppState() {
     return AppStateStore({
         eventualStates: {
             pointerMove: [0, 0] as [x: number, y: number],
+            pointerLastClickLocation: [0, 0] as [x: number, y: number],
             pointerClick: 0,
             uiMarkup: '',
-            cat: imgBitmap
+            carouselPosition: 0,
+            cat: imgBitmap,
+            videoShown: false,
+            videoToShow: ''
         },
         immediateStates: ImmediateStates({
-            maxEIDs: 128,
+            maxEIDs: 1024,
             maxResources: 32,
             bitComponents: ['debugRadius', 'cat'],
             sizedComponents: ['position', 'velocity', 'acceleration', 'foobar'],

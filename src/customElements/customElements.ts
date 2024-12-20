@@ -135,3 +135,142 @@ export function MakeCanvasDisplay2D(appState: Awaited<ReturnType<typeof MakeAppS
         }
     }
 }
+export function MakeAnimalCarousel(appState: Awaited<ReturnType<typeof MakeAppState>>) {
+    return class AnimalCarousel extends HTMLElement {
+        hostEl: HTMLElement
+        STEP_SIZE = 260
+        carouselPosition = 0
+
+        constructor() {
+            const _hel = super()
+            this.hostEl = _hel as unknown as HTMLElement
+        }
+
+        async slideRight(dispatch: typeof appState['dispatch']) {
+            this.carouselPosition -= this.STEP_SIZE
+            this.hostEl.querySelectorAll('.carousel-arrow_left').forEach(arrow => {
+                arrow.classList.remove('disabled');
+            })
+            if (this.carouselPosition <= -262) {
+                this.carouselPosition = -282
+                setTimeout(() => {
+                    this.carouselPosition = -262
+                    dispatch('carouselPosition', this.carouselPosition)
+                }, 200)
+                this.hostEl.querySelectorAll('.carousel-arrow_right').forEach(arrow => {
+                    arrow.classList.add('disabled');
+                })
+                return
+            }
+        }
+
+        async slideLeft(dispatch: typeof appState['dispatch']) {
+            this.carouselPosition += this.STEP_SIZE
+            this.hostEl.querySelectorAll('.carousel-arrow_right').forEach(arrow => {
+                arrow.classList.remove('disabled');
+            })
+            if (this.carouselPosition > 0) {
+                this.carouselPosition = 20
+                setTimeout(() => {
+                    this.carouselPosition = 0
+                    dispatch('carouselPosition', this.carouselPosition)
+                }, 200)
+
+                this.hostEl.querySelectorAll('.carousel-arrow_left').forEach(arrow => {
+                    arrow.classList.add('disabled');
+                })
+                return
+            }
+        }
+
+        @appState.useDispatch
+        async connectedCallback(dispatch: typeof appState['dispatch']) {
+            console.log('AnimalCarousel connected')
+
+            const connectedEv = new CustomEvent('frameReadySubscriberConnected', {detail: {self: this}})
+            document.dispatchEvent(connectedEv)
+
+            this.hostEl.querySelectorAll('.carousel-arrow_right').forEach(arrow => {
+                arrow.addEventListener('click', async _event => {
+                    await this.slideRight(dispatch)
+                    await dispatch('carouselPosition', this.carouselPosition)
+                })
+            })
+
+            this.hostEl.querySelectorAll('.carousel-arrow_left').forEach(arrow => {
+                arrow.addEventListener('click', async _event => {
+                    await this.slideLeft(dispatch)
+                    await dispatch('carouselPosition', this.carouselPosition)
+                })
+            })
+
+            this.hostEl.querySelectorAll('li img').forEach(img => {
+                img.addEventListener('click', async _event => {
+                    await dispatch('videoToShow', img.dependsWhichYouClick[0])
+                    await dispatch('videoShown', true)
+                })
+            })
+        }
+
+        @appState.subscribe('carouselPosition')
+        update(eventualState: EventsOf<typeof appState>) {
+            const animalList = this.hostEl.querySelectorAll('li')
+            animalList.forEach(li =>
+                li.setAttribute('style', `transform: translateX(${eventualState.carouselPosition}px)`))
+        }
+    }
+}
+export function MakeVideoModal(appState: Awaited<ReturnType<typeof MakeAppState>>) {
+    return class VideoModal extends HTMLElement {
+        hostEl: HTMLElement
+        shown = false
+
+        constructor() {
+            const _hel = super()
+            this.hostEl = _hel as unknown as HTMLElement
+        }
+
+        @appState.useDispatch
+        async connectedCallback(dispatch: typeof appState['dispatch']) {
+            console.log('VideoModal connected')
+
+            const connectedEv = new CustomEvent('frameReadySubscriberConnected', {detail: {self: this}})
+            document.dispatchEvent(connectedEv)
+
+            const videoElement = this.hostEl.querySelector('video')
+            videoElement.addEventListener('click', async _event => {
+                _event.preventDefault()
+            })
+
+            this.hostEl.addEventListener('click', async _event => {
+                await dispatch('videoShown', false)
+            })
+        }
+
+        @appState.subscribe('videoShown')
+        update(eventualState: EventsOf<typeof appState>) {
+            this.hostEl.setAttribute('style', `
+            visibility: ${eventualState.videoShown ? 'visible' : 'hidden'};
+            opacity: ${eventualState.videoShown ? '1.0' : '0' };
+            `)
+        }
+    }
+}
+export function MakeCheckoutPanel(appState: Awaited<ReturnType<typeof MakeAppState>>) {
+    return class MakeCheckoutPanel extends HTMLElement {
+        hostEl: HTMLElement
+
+        constructor() {
+            const _hel = super()
+            this.hostEl = _hel as unknown as HTMLElement
+        }
+
+        @appState.useDispatch
+        async connectedCallback(dispatch: typeof appState['dispatch']) {
+            console.log('CheckoutPanel connected')
+
+            const connectedEv = new CustomEvent('frameReadySubscriberConnected', {detail: {self: this}})
+            document.dispatchEvent(connectedEv)
+        }
+    }
+}

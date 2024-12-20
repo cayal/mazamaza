@@ -48,43 +48,122 @@ h2 {
     z-index: 100;
     transition: transform 1.5s ease-in-out;
     display: grid;
+    grid-template-rows: 4rem 1px 4rem 1px 26rem 1fr;
     align-items: center;
     justify-content: center;
   }
 
-  .modal-ui>video {
-    width: 400px;
+  .modal-ui h1 {
+    text-transform: uppercase;
+    text-align: center;
+    font-size: 2rem;
+    color: rgb(61, 109, 182)
   }
 
-  .animal-carousel {
+  .modal-ui hr {
+    width: 100vw;
+    background-color: #090c0c;
+    border-color: rgba(30,35,40,0.3);
+    box-shadow: 0 0 4px rgba(30,35,40, 0.0);
+  }
+
+  .modal-ui h3 {
+    text-align: center;
+    font-weight: 500;
+    font-size: 1.2rem;
+  }
+
+  .modal-ui p {
+    font-size: 14px;
+    padding: 0 1.5rem 0 1rem;
+    line-height: 1.25em;
+    font-weight: 600;
+  }
+
+  video-modal {
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 1s ease-in-out;
+    position: absolute;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100vw;
+    height: 100vh;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  video-modal video {
+    max-width: 48rem;
+  }
+
+  .animals, .confessions {
+    margin: auto;
     display: flex;
     flex-direction: column;
-    max-width: 38rem;
+    width: calc(256px + 256px + 2rem);
+    position: relative;
   }
 
-  .animal-carousel>ul {
+  animal-carousel {
+    position: relative;
+    width: calc(256px + 256px + 2rem);
+    height: 21.5rem;
+    container-type: size;
+  }
+
+  .carousel-arrow:hover:not(.disabled) {
+    opacity: 1.0;
+  }
+
+  .carousel-arrow.disabled {
+    opacity: 0.3;
+  }
+
+  .carousel-arrow {
+    cursor: pointer;
+    position: absolute;
+    height: 32px;
+    transition: opacity 0.5s;
+    z-index: 50;
+    opacity: 0.8;
+    top: calc(50cqh - 16px)
+  }
+
+  .carousel-arrow_right {
+    right: -16px;
+  }
+
+  .carousel-arrow_left {
+    transform: scaleX(-100%);
+    left: -16px;
+  }
+
+  .animal-carousel-list {
     list-style: none;
-    outline: 1px solid red;
+    margin: 0;
     overflow: hidden;
     display: flex;
     padding: 0;
     column-gap: 1rem;
   }
 
-  .animal-carousel>ul>li {
+  .animal-carousel-list>li {
     border: 1px solid #2d343d;
+    transition: transform 0.2s ease-in-out;
   }
 
-  .animal-carousel>ul>li>img {
+  .animal-carousel-list img {
     box-shadow: 0 4px 3px -3px black;
   }
 
-  .animal-carousel .player-poster {
+  .animals .player-poster {
     position: relative;
     cursor: pointer;
   }
 
-  .animal-carousel .play-button {
+  .animals .play-button {
     width: 28px;
     opacity: 0.7;
     position: absolute;
@@ -92,11 +171,76 @@ h2 {
     right: 0.75rem;
   }
 
-  .animal-carousel>ul>li>p {
-    font-size: 14px;
-    padding: 0 1.5rem 0 1rem;
-    line-height: 1.1em;
+  .confessions-grid {
+    list-style: none;
+    margin: 0;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: repeat(2, 1fr);
+    grid-template-columns: repeat(2, 1fr);
+    column-gap: 0;
+    padding: 0;
+  }
+
+  .confessions-item {
+    margin: 0;
+    width: 256px;
+    height: calc(256px + 5rem)
+  }
+
+  .confessions-item:nth-of-type(2n) {
+    justify-self: flex-end;
+  }
+
+  .confessions-item img {
+    border-radius: 5px;
+    cursor: pointer;
+  }
+
+  .confessions-item p {
+    padding: 0;
+    font-size: 16px;
+    margin: 0.75rem 0;
+  }
+
+  .confessions-item small {
+    padding: 0;
+    color: rgba(185, 188, 189);
+    font-size: 16px;
+  }
+
+  .checkout {
+    position: fixed;
+    bottom: 0;
+    height: 4rem;
+    width: 100vw;
+    border: 2px solid rgba(30,35,40,1.0);
+    box-shadow: 0 0 4px rgba(30,35,40, 0.0);
+    background: rgba(23, 26, 29);
+  }
+
+  check-out-panel {
+    height: 100%;
+    margin: auto;
+    width: calc(256px + 256px + 2rem);
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    align-items: center;
+  }
+
+  check-out-panel h2 {
+    margin: 0;
+  }
+  check-out-panel button {
+    color: white;
+    font-family: 'Proxima Nova', 'Helvetica', 'Arial', -system-ui, sans-serif;
+    font-size: 1.1rem;
+    border: none;
+    height: 3rem;
+    border-radius: 5px;
     font-weight: 600;
+    cursor: pointer;
+    background: rgba(229, 104, 27);
   }
 }
 
